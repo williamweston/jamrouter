@@ -28,10 +28,10 @@
 
 
 /* event pool size must be a power of 2 */
-#define MIDI_EVENT_POOL_SIZE        1024
+#define MIDI_EVENT_POOL_SIZE        2048
 #define MIDI_EVENT_POOL_MASK        (MIDI_EVENT_POOL_SIZE - 1)
 
-#define SYSEX_BUFFER_SIZE           512
+#define SYSEX_BUFFER_SIZE           1024
 
 
 /* MIDI event types */
