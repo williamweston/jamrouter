@@ -677,8 +677,7 @@ set_jack_latency(jack_latency_callback_mode_t mode)
 /*****************************************************************************
  * jack_latency_handler()
  *
- * Called when jack sets or changes port latencies.  This should only be
- * necessary when inputs are enabled.
+ * Called when jack sets or changes port latencies.
  *****************************************************************************/
 #ifdef ENABLE_JACK_LATENCY_CALLBACK
 void
