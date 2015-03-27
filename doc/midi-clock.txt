@@ -1,0 +1,188 @@
+MIDI event timing with JACK processing periods as input clock source:
+-------------------------------------------------------------------------------
+
+The Task:  Generate a tickless MIDI reference clock using JACK buffer
+processing times (which can be _any_ time within the MIDI buffer period) as
+the input clock pulse.
+
+The How:  For synchronizing the MIDI Tx thread sleep times and the MIDI
+ringbuffers, a new monotonic timestamp is fetched by the JACK process thread
+and then used to update all time sensitive synchronization parameters for the
+next MIDI period.  To make this clock tickless, all time synchronization and
+thread synchronization variables are kept in a lock-free sync_info[]
+ringbuffer.  In addition to providing proper realtime performance, this design
+allows for flawless jack_bufsize transitions (and in the future
+jack_samplerate transitions) without restarting threads.
+
+In the absence of xruns and other audio synchronization problems, we know that
+the buffer is processed exactly once per buffer period, thus providing a
+guaranteed 1:1 phase lock between the JACK and raw MIDI threads.  To attenuate
+the jitter introduced by differences in JACK's scheduling between buffer
+processing periods, a decayed average filter is used to calculate the MIDI
+period time, which in turn is used for calculating the next MIDI reference
+clock tick and for assiging frame positions to incoming MIDI events and for
+scheduling transmission of outgoing MIDI events.
+
+           +---+---+-+-----+-----+-+-+-----+---+---+---+---+
+           | 1 | 2 |1|  2  |   1 |2|1|  2  | 1 | 2 | 1 | 2 |
+           +---+---+-+-----+-----+-+-+-----+---+---+---+---+
+
+           +-------+-------+-------+-------+-------+-------+
+           |RR   R |    R  |RR R  R|RR RR R|RR   R |    R  |
+           +-------+-------+-------+-------+-------+-------+
+           ^   ^   ^^      ^      ^^^      ^   ^   ^   ^   ^
+           |   |   ||      |      |||      |   |   |   |   |
+           |   J   |J      |      J|J      |   J   |   J   |
+           C       C       C       C       C       C       C
+
+ C   = Reference clock for MIDI period.
+ J   = JACK buffer processing period start time.
+ M   = Incoming MIDI event.
+1/2  = Segments within MIDI period occurring before and after JACK wakeup.
+
+On a properly tuned system running a recent -rt kernel, the maximum system
+imposed MIDI timing jitter should be:
+
+        hardware buffering and interrupt jitter.
+      + kernel irq and scheduling induced jitter.
+      + MIDI hardware driver induced jitter.
+      + application induced jitter.
+
+The application induced jitter effectively becomes a function of:
+
+        delta between max. and min. MIDI thread wakup latencies.
+      + delta between max. and min. MIDI event timestamping latency.
+      + JACK wakeup jitter not fully attenuated by decayed averager.
+      + inaccuracies in calculation of MIDI reference clock.
+
+In practice, the total software induced jitter comes out to < 150us, bringing
+the total jitter down to well under 1ms on decent MIDI hardware.  Recent PC
+hardware (within the past 10 years) with a decent PCI based MIDI interface
+running a realtime kernel and properly tuned scheduling priorities should
+reliably keep total jitter down to 150us or better.
+
+Total MIDI Latency, on the other hand, is a function of:
+
+        MIDI hardware buffering and interrupt latency.
+      + MIDI driver induced latency.
+      + (MIDI + audio) kernel irq and scheduling latency.
+      + audio driver buffer processing latency.
+      + audio hardware buffer playback / DA conversion latency.
+      + application (+ lib/sys call) audio processing latency.
+      + application (+ lib/sys call) MIDI processing latency.
+
+The application induced latency is quite determinate, even when taking
+into account the jitter mentioned above.  The following diagrams
+describe the synchronization of the MIDI Rx, MIDI Tx, and JACK threads,
+or more accurately, the synchronization between their buffer indices.
+
+Typical MIDI Reference clock boundaries, with audio wakeup events
+occurring near the end of MIDI cycles.
+
+   C1              C2              C3              C4              C5
+    |               |               |               |               |
+ J0 |            J1 |            J2 |            J3 |            J4 |
+  | |             | |             | |             | |             | |
+  | |             | |             | |             | |             | |
+----+---------------+---------------+---------------+---------------+-->
+
+Breaking this down, let's look at a typical pattern for a single MIDI
+processing period:
+
+                   C1           J1  C2
+                    | M2Rx     M3Rx |
+                    |   | M1Tx M2Tx |
+                    |   |   |    |  |
+                    |   v   v    v  |
+                    +---------------+
+
+The only thing that determines when this period begins is the calculated MIDI
+time reference C.  This calculation maintains the phase relationship with the
+JACK wakeup time J.  When the current monotonic timestamp is greater than C,
+we are in the new MIDI period.  The MIDI Tx thread uses this time reference
+for calculating sleep times and knowing when to update the thread's index into
+the buffers.  This gives the MIDI Tx thread the entire peroid between MIDI
+reference clocks to process events received during the previous period.  To
+see how this translates into latency, we must look at an additional two
+periods (or more if setting_buffer_latency is above its minimum value), and
+trace the lifetime of MIDI events being routed in both directions:
+
+   C1          J1  C2          J2  C3          J3  C4
+    | M1Rx    M2Rx  | M3Rx      |   |           |   |
+    |   |     M1Tx  |   | M2Tx  |   |           |   |
+    |   |       |   |   |   |   |   |           |   |
+    |   v       v   |   v   v   v   |           v   |
+    +-----------+---+-----------+---+---------------+---->
+    ^   ^       ^   ^   ^   ^   ^   ^
+    |   |       |   |   |   |   |   |                        
+   [1] [2]     [3] [4] [5] [6] [7] [8]
+
+[1]  MIDI reference time C1 signifies new MIDI period.  MIDI Tx thread
+     will be waking up any nanosecond to check for queued MIDI events in the
+     current MIDI period if it isn't currently transmitting.
+
+[2]  MIDI event M1 is received by the raw MIDI Rx thread, and is queued for
+     frame position 56.  At this point, the MIDI Rx index is one full period
+     ahead of both the MIDI Tx index and the JACK buffer index.
+
+[3]  JACK processing thread wakes up as normal, the timing of this wakeup
+     is calculated as frame 186, the decayed average for the MIDI clock
+     period is updated, and the future MIDI clock timestamp C2 is set.
+     MIDI event M2 is received on the JACK MIDI Rx port, and MIDI event M1
+     is transmitted on the JACK MIDI Tx port.
+
+[4]  New MIDI clock reference C2, signifying start of next MIDI period.
+     MIDI Tx thread will wake up any nanosecond, this time to process
+     MIDI events for the period in which event M2 was received.
+
+[5]  MIDI event M1 is received by the raw MIDI Rx thread, and is queued for
+     frame position 54.  At this point, the MIDI Rx index is one full period
+     ahead of both the MIDI Tx index and the JACK buffer index.
+
+[6]  MIDI event M2 is written to the MIDI Tx device by the MIDI Tx thread.
+
+[7]  JACK buffer processing thread wakes up, again adjusting the MIDI clock
+     period decayed average, and the future MIDI clock timestamp C3 is set.
+
+
+JAMRouter Implementation Notes:
+-------------------------------------------------------------------------------
+
+All synchronization between threads is achieved through a lock-free
+sync_info[] ringbuffer.  Sample rate, buffer size and mask, latencies, queue
+indices, MIDI period start and end times, and running decayed averages for
+frame and period time intervals are all accessed through sync_info[], and only
+through sync_info[].  This pattern allows simple checks to be added to the
+timing routines to determine if the timing information in sync_info[period] is
+stale, and for current timing information to be reliably extrapolated from the
+most recently known sync_info[] instead.  Such checks and corrections are
+performed in get_midi_period() and get_midi_frame(), and were an anticipated
+part of the new MIDI transport design.  These two extra bits of logic provide
+flawless synchronization at extremely low buffer sizes, and act as an extra
+safeguard against synchronization failure at any buffer size.  Use of the
+sync_info[] ringbuffer also allows immediate next period response to buffer
+size changes (and sample rate changes once supported by JACK) without
+restarting threads or re-initializing subsystems.
+
+The only part of JAMRouter that is not lock-free is the MWSR debug queue.
+Rather than use the heavy-weight POSIX locking semantics (considered bad
+practice in JACK buffer callback or any audio system buffer callback threads),
+a lighter weight queue using atomic operations was devised.  When updating the
+queue index, writers first spin on a cas token, then update the queue index
+with an atomic add, and finally release the token with an atomic set.  A
+simple cas operation on the queue index alone in this situation is not -rt
+safe, as observed in the debug queue currently in PHASEX.  While cas works
+nearly all of the time, cas alone does not guarantee atomicity.  This can be
+seen when two PHASEX threads obtain the same debug queue index and write to
+the same buffer.  No such race conditions have been observed under the current
+JAMRouter debug queue design.
+
+PHASEX also currently uses the same cas mechanism for atomically updating the
+midi_index and current period's timestamp.  This cas failure was clearly
+identified during JAMRouter development, further motivating the new lock-free
+thread synchronization design.  Also observed in PHASEX is the possibility of
+synchronization failure when the debug code is not compiled in.  The new
+JAMRouter design includes full memory fences in key locations for each thread
+so that realtime behaviour does not mysteriously change when built without
+debugging enabled.  Once this new design is proven in JAMRouter,
+the synchronization and MIDI transport code in PHASEX will be updated as well.

@@ -1,0 +1,62 @@
+#!/bin/bash
+
+# pairs of <buffer-size>,<test-samples>
+#pairs='16,8192 32,4096 64,2048 128,1024 256,512 512,256 1024,128 2048,64'
+#pairs='16,16384 32,8192 64,4096 128,2048 256,1024 512,512 1024,256 2048,128'
+pairs='32,8192 64,4096 128,2048 256,1024 512,512 1024,256 2048,128'
+#pairs='32,16384 64,8192 128,4096 256,2048 512,1024 1024,512 2048,256'
+
+#ifaces='/dev/midi1 /dev/midi2 hw:1,0 hw:2,0 14:0 20:0 24:0'
+ifaces='/dev/midi1'
+
+#phases='0.25 0.50 0.75'
+phases='0.5'
+
+#guardtimes='000 160 320 480 640'
+guardtimes='0'
+
+messagesize=3
+
+if [ $# != 3 ]; then
+	echo "Usage:  $0 <test-start-num> <test-end-num> <test-dir>"
+	exit 1
+fi
+
+tstart=$1
+tend=$2
+tdir=$3
+
+if  [ $messagesize -eq 3 ]; then
+	regex='(^Peak)|(\})|(\]\])|(\|)|(\+ )|(\? )|(X)|(<[0123456789ABCDEF]+>)|([ABCDEF][0123456789ABCDEF] )|(\! [0-9]+ \! [0-9]+ \! [0-9]+ \!)'
+else
+	regex='(^Peak)|(\})|(\]\])|(\|)|(\+ )|(\? )|(X)|(<[0123456789ABCDEF]+>)|(\! [0-9]+ \! [0-9]+ \! [0-9]+ \!)'
+fi
+
+samplerate=`jack_samplerate`
+
+reset
+
+for tnum in `seq -w $tstart $tend`; do
+	for pair in $pairs; do
+		bufsize=`echo $pair | sed -e 's/,.*$//g'`
+		samples=`echo $pair | sed -e 's/^.*,//g'`
+		for phase in $phases; do
+			for guardtime in $guardtimes; do
+				for iface in $ifaces; do
+					iface_name=`echo $iface | sed -e 's/\//_/g'`
+					echo -en "\\033[0;39m"
+					echo -n "___________  ${tnum} ${iface} ${bufsize} ${phase} ${guardtime}  ::  "
+					echo "test.${iface_name}.${phase}.${guardtime}.${samplerate}.${bufsize}.${tnum}.out  ___________"
+					( ./jamrouter-latency-test ${bufsize} ${phase} ${iface} ${samples} ${guardtime} 2>&1 ) \
+						| tee ${tdir}/test.${iface_name}.${phase}.${guardtime}.${samplerate}.${bufsize}.${tnum}.out \
+						| egrep -v "\@" | egrep "${regex}" \
+						| sed -e 's/latency-tests\/jamrouter-latency-test.*Hangup.*$//g' \
+						| cut -f 1-15 -d '!'
+					echo -en "\\033[0;39m"
+					echo -n "^^^^^^^^^^^  ${tnum} ${iface} ${bufsize} ${phase} ${guardtime}  ::  "
+					echo "test.${iface_name}.${phase}.${guardtime}.${samplerate}.${bufsize}.${tnum}.out  ^^^^^^^^^^^";
+				done;
+			done;
+		done;
+	done;
+done

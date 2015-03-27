@@ -1,0 +1,15 @@
+#!/bin/bash
+
+if [ $# != 2 ]; then
+	echo "Usage:  $0 <frames-per-period> <test-file>"
+	exit 1
+fi
+
+test_file="$2"
+frames_per_period=$1
+end_frame=$(($frames_per_period - 1))
+
+( for frame in `seq 0 $end_frame`; do
+	egrep "\[${frame}[\+\-][0-9]+\]" "${test_file}" | sort | uniq -c;
+done && grep Peak "${test_file}" ) | less
+

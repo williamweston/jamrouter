@@ -1,0 +1,148 @@
+JAMRouter <--> Juno-106 MIDI Controller Implementation:
+------------------------------------------------------------------------------
+               Sysex
+Hex:    Dec:   ID:    Controller:             Values:
+------------------------------------------------------------------------------
+0x01    001           Modulation              0=Off ?=On (Manual claims 0-127)
+------------------------------------------------------------------------------
+0x0E    014    0x00   LFO Rate                0-127
+0x0F    015    0x01   LFO Delay Time          0-127
+0x10    016    0x02   DCO LFO                 0-127
+0x11    017    0x03   DCO PWM                 0-127
+0x12    018    0x04   DCO Noise               0-127
+0x13    019    0x05   VCF Freq                0-127
+0x14    020    0x06   VCF Res                 0-127
+0x15    021    0x07   VCF Env                 0-127
+0x16    022    0x08   VCF LFO                 0-127
+0x17    023    0x09   VCF KYBD                0-127
+0x18    024    0x0A   VCA LEVEL               0-127
+0x19    025    0x0B   Env A                   0-127
+0x1A    026    0x0C   Env D                   0-127
+0x1B    027    0x0D   Env S                   0-127
+0x1C    028    0x0E   Env R                   0-127
+0x1D    029    0x0F   DCO Sub                 0-127
+------------------------------------------------------------------------------
+0x1E    030    0x10   Button State Bits       0-127 (cc 0x66-0x6C bit array)
+0x1F    031    0x11   Switch State Bits       0-127 (cc 0x6D-0x73 bit array)
+------------------------------------------------------------------------------
+0x40    064           Hold Pedal              0=Off         64=On
+------------------------------------------------------------------------------
+0x66    102           DCO Range 16' Button    0=Off         1=On
+0x67    103           DCO Range 8' Button     0=Off         1=On
+0x68    104           DCO Range 4' Button     0=Off         1=On
+0x69    105           DCO Square Button       0=Off         1=On
+0x6A    106           DCO Sawtooth Button     0=Off         1=On
+0x6B    107           Chorus Mode Bit 1       0=Chorus On   1=Chorus Off
+0x6C    108           Chorus Mode Bit 2       0=Chorus II   1=Chorus I
+------------------------------------------------------------------------------
+0x6D    109           DCO LFO/Man Switch      0=LFO         1=Man
+0x6E    110           VCF Env +/- Switch      0=Polarity +  1=Polarity -
+0x6F    111           VCA Gate/Env Switch     0=Env         1=Gate
+0x70    112           HPF Freq Switch Bit 1   HPF Bit1 | Bit2:
+0x71    113           HPF Freq Switch Bit 2   00=HPF3 01=HPF2 10=HPF1 11=HPF0
+0x72    114           Switch State Bit 6      ?
+0x73    115           Switch State Bit 7      ?
+------------------------------------------------------------------------------
+0x74    116           HPF Freq                0=HPF0 32=HPF1 64=HPF2 96=HPF3
+0x75    117           Chorus I / Off / II     0=Chorus I 64=Off 96=Chorus II
+------------------------------------------------------------------------------
+
+
+JAMRouter <--> Juno-106 MIDI Implementation Details:
+------------------------------------------------------------------------------
+As the Juno-106 was being developed in parallel with the MIDI-1.0 spec in
+1983-1984, the engineers at Roland decided to implement most of the
+parameters changes through SysEx and not standard MIDI controllers.
+Working with an early MIDI spec subject to change, this SysEx
+implementation guaranteed that the device would still be MIDI compliant
+if the spec for controller messages changed, and apparantly the Roland
+engineers came to the same conclusion.  Decades later, the Juno-106 is
+still MIDI compliant for all the parts of the MIDI spec implemented,
+quite an engineering feat for such an early MIDI device.
+
+As MIDI compliant as the Juno-106 is, there are a few shortcomings when
+programming a Juno using modern software sequencers.  Most sequencers for
+Linux don't have an easy mechanism for translating Controller changes to
+and from SysEx messages, thus programming a Juno-106 becomes a great
+chore.  JAMRouter has implemented full 2-way SysEx <--> Controller
+message conversion in realtime, with no additional cost in terms of
+latency or jitter.  Every Juno-106 SysEx parameter has been mapped to a
+MIDI controller for use with other controllers and sequencers.  With
+JAMRouter, sequencers never have to worry about deailing with Juno-106
+SysEx directly, and the Juno-106 does not require modifications to the
+operating system to speak in the language of Controller changes.
+
+Two of the original SysEx parameters on the Juno (0x1E and 0x1F) are bit
+packed arrays grouping the button and switch states together into single
+parameters, making programming button and switch changes difficult, even
+with the SysEx <--> Controller translation.  JAMRouter implements
+additional controllers for the 7 button state bits in parmeter 0x1E and
+the 7 switch state bits in parameter 0x1F.  Additionally, as the Chorus
+and HPF states require 2 bits, Chorus mode and HPF Freq have been given
+their own dedicated controllers as well.  Since 0x1E and 0x1F are shared
+button and switch states, the SysEx translation has been designed to keep
+track of the current state of all the bits in these controllers, and to
+not send the SysEx messages if any of these bits are in an indeterminate
+state.  JAMRouter will begin sending the appropriate SysEx messages
+whenever the button Controller messages are sent _only_ once each of the
+individual button states are known.  This is accomplished either through
+SysEx patch sends from the Juno (by pressing the MANUAL button to send
+the current patch, or by selecting a new patch from the Juno's internal
+memory), or by sending Controllers for _all_ buttons to the Juno, so that
+the full state for these bit-packed parameters is known.  The same is
+true for the seven switch state bits.  When selecting new patches on the
+Juno, it is important to note that two SysEx patch dumps are sent back to
+back.  The first of these is the patch that the Juno is switching _from_,
+and the second is the patch the Juno is switching _to_.
+
+In additional to converting the bit-packed parameters to and from
+controllers, JAMRouter tracks the state of these individual bits so that
+these bit-wise parameters can function entirely independently.  Combined
+with the bandwidth saving feature of condensing multiple Controller
+changes into one when scheduled for the same JACK frame (audio sample
+within the audio buffer period), multiple button state changes can be
+sequenced fully independently without generating tons of excess SysEx
+traffic on the wire, leaving more MIDI bandwidth available for other
+parameter changes without crowding out the timing of note on/off
+messages.
+
+The Juno also exhibits another MIDI quirk when used as a MIDI keyboard
+controller.  The Note-Off message for the last remaining note in play is
+always converted into the All-Notes-Off controller.  If all of the last
+remaining notes in play are released at once (faster than the time it
+takes the Juno to process and deliver a single Note-Off message), the
+Juno-106 will use the All-Notes-Off controller to shut off all remaining
+notes in play without delivering the corresponding Note-Off (actually
+Note-On with velocity=0) messages.  This behavior is actually fully MIDI
+compliant.  The odd behavior of hung notes comes about when sequencers
+and sound modules on the other don't implement the MIDI spec fully
+enough, behavior which is seen most in early MIDI gear and modern
+sequencer software.  JAMRouter actively tracks which keys are in play and
+converts the All-Notes-Off Controller back into the appropriate Note-Off
+messages for output on the JACK MIDI port on the other end.  No more hung
+notes in sequencers and software synthesizers.
+
+For the best results, if possible, use the ALSA Raw MIDI driver to
+connect to the MIDI interface, as the ALSA Raw MIDI drivers properly
+implement duplex operation, poll descriptors, character device read and
+write, blocking and non-blocking i/o, as well as generic device i/o
+without the overhead of the ALSA Sequencer queuing mechanism.  With
+direct i/o support now in the ALSA Sequencer, the ALSA Sequencer driver
+in JAMRouter may stand a chance of outperforming the Generic Raw MIDI
+driver.  This may vary on an interface by interface basis.
+
+This Juno-106 SysEx <--> Controller implementation is 100% complete,
+allowing every MIDI addressable parameter to be programmed through
+standard Controller messages.  Nothing has been left out.  JAMRouter
+allows the Juno-106 to be programmed to its full potential without
+hardware modification.
+
+Feel free to leave send any feedback whatsoever regarding the Juno-106 and
+JAMRouter, especially links to new tunes.  Enjoy JAMRouter, and enjoy the
+classic analog sound of the Juno-106!
+
+
+--Best Regards,
+  William Weston <william.h.weston@gmail.com>
+
+------------------------------------------------------------------------------

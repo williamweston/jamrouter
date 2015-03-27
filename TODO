@@ -1,0 +1,41 @@
+==============================================================================
+JAMRouter:  JACK <--> ALSA MIDI Router
+
+TODO LIST:
+==============================================================================
+
+- Fix git version script integration in jamrouter.spec.in.
+- Consider use of pselect() based sleep with maximum sleep times combined
+  with realtime signals for waking from sleep.
+- Implement proper error handling in raw MIDI code.
+- Research MPU-401 intelligent mode and portability outside OSS.
+
+
+POSSIBLE NEW FEATURES:
+==============================================================================
+* From JAMRouter, create libjam, a generic multi-driver MIDI transport
+  library, to which JAMRouter and PHASEX will eventually link.
+* Alpha-Juno SysEx <--> Controller translation.
+* Generic SysEx <--> Controller translation layer.
+* Generic RPN / NRPN <--> Controller translation.
+* Generic 14bit <--> 7bit Controller translation.
+* GUI with dynamic MIDI Controller knob layouts based on synth definitions.
+* MIDI Clock Tick and MTC Quarterframe generation with sync/regeneration
+  capabilities for flawless clock sync in either direction.
+* Internal LFOs for modulation of MIDI Controllers.
+* Optional rules for re-ordering of events scheduled at the same time
+  (highest notes first, Note-On before Note-Off, Note-Off before Note-On,
+  Controllers and Pitchbend first, SysEx last, etc.)
+* Generic hold-pedal support for soft-synths without it.
+* MIDI channel delays.
+* Flexible anywhere-to-anywhere MIDI routing architecture.
+* Support for proper handling of custom extensions to the MIDI spec
+  (event types 0x00-0x7F, 0xF4, and 0xFD).
+* SysEx dump / SysEx OS loader mode.
+* Loopback test / flood test / bandwidth test modes.
+* OSC <--> MIDI routing.
+* MIDI over SPDIF support.
+* Parallel port / Serail port MIDI support.
+* PortMIDI support.
+* Synchronized audio transport layer.
+* Message length adaptive latency.

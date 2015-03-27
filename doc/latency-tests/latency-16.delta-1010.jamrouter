@@ -1,0 +1,30 @@
+MIDI Device:         hw:1,0  M-Audio Delta-1010 (ICE1727)
+MIDI Driver:         ALSA Raw MIDI
+Phase Lock:          0.5
+Sample Rate:         96000
+Buffer Size:         16
+Rx Latency Periods:  (default)
+Tx Latency Periods:  (default)
+JAMRouter Cmd:       src/jamrouter -M raw -D hw:1,0 -d stream -d testing -d timing -F -0 -z 0.5 -g 0 
+Latency Test Cmd:    jack_midi_latency_test -s 16384 -m 3
+
+Waiting for connections ...
+Waiting for test completion ...
+
+Reported out-port latency: 0.43-0.55 ms (41-53 frames)
+Reported in-port latency: 1.72-1.84 ms (165-177 frames)
+Average latency: 2.16 ms (207.41 frames)
+Lowest latency: 2.16 ms (207 frames)
+Highest latency: 2.25 ms (216 frames)
+Peak MIDI jitter: 0.10 ms (9 frames)
+Average MIDI jitter: 0.01 ms (0.03 frames)
+
+Jitter Plot:
+0.0 - 0.1 ms: 16384
+
+Latency Plot:
+2.1 - 2.2 ms: 16382
+2.2 - 2.3 ms: 2
+
+Messages sent: 16384
+Messages received: 16384

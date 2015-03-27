@@ -1,0 +1,25 @@
+#!/bin/bash
+
+if [ $# -lt 1 ]; then
+	echo "Usage:  $0 <test-file>"
+	exit 1
+fi
+
+test_files=`/bin/ls -1 "$@"`
+
+regex='(^Peak)|(\})|(\]\])|(\|)|(\?)|(X)|(<[0123456789ABCDEF]+>)|([ABCDEF][0123456789ABCDEF] )|(\! [0-9]+ \! [0-9]+ \! [0-9]+ \!)'
+
+for test_file in $test_files; do
+
+	echo -en "\\033[0;39m"
+	echo "___________ ${test_file} ___________"
+
+	egrep -v '\@' "${test_file}" \
+		| egrep "${regex}" \
+		| sed -e 's/latency-tests\/jamrouter-latency-test.*Hangup.*$//g' \
+		| cut -f 1-15 -d '!'
+
+	echo -en "\\033[0;39m"
+	echo "^^^^^^^^^^^ ${test_file} ^^^^^^^^^^^"
+
+done

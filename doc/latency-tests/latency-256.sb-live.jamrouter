@@ -1,0 +1,30 @@
+MIDI Device:         hw:2,0  Creative SB-Live (EMU10K1)
+MIDI Driver:         ALSA Raw MIDI
+Phase Lock:          0.5
+Sample Rate:         96000
+Buffer Size:         256
+Rx Latency Periods:  (default)
+Tx Latency Periods:  (default)
+JAMRouter Cmd:       src/jamrouter -M raw -D hw:2,0 -d stream -d testing -d timing -F -0 -z 0.5 -g 0 
+Latency Test Cmd:    jack_midi_latency_test -s 1024 -m 3
+
+Waiting for connections ...
+Waiting for test completion ...
+
+Reported out-port latency: 4.00-4.12 ms (384-396 frames)
+Reported in-port latency: 4.31-4.44 ms (414-426 frames)
+Average latency: 8.40 ms (806.29 frames)
+Lowest latency: 8.38 ms (804 frames)
+Highest latency: 8.49 ms (815 frames)
+Peak MIDI jitter: 0.12 ms (11 frames)
+Average MIDI jitter: 0.01 ms (0.38 frames)
+
+Jitter Plot:
+0.0 - 0.1 ms: 1024
+
+Latency Plot:
+8.3 - 8.4 ms: 600
+8.4 - 8.5 ms: 424
+
+Messages sent: 1024
+Messages received: 1024

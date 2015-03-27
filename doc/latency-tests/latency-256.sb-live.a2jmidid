@@ -1,0 +1,45 @@
+MIDI Router: a2jmidid
+MIDI Device: SB Live Emu10K1
+MIDI Driver: ALSA Sequencer
+JACK Buffer Size: 256
+
+Waiting for connections ...
+Waiting for test completion ...
+
+Reported out-port latency: 0.00-0.00 ms (0-0 frames)
+Reported in-port latency: 0.00-0.00 ms (0-0 frames)
+Average latency: 6.25 ms (600.25 frames)
+Lowest latency: 5.39 ms (518 frames)
+Highest latency: 6.82 ms (655 frames)
+Peak MIDI jitter: 1.43 ms (137 frames)
+Average MIDI jitter: 0.27 ms (24.87 frames)
+
+Jitter Plot:
+0.0 - 0.1 ms: 68
+0.1 - 0.2 ms: 332
+0.2 - 0.3 ms: 413
+0.3 - 0.4 ms: 43
+0.4 - 0.5 ms: 35
+0.5 - 0.6 ms: 46
+0.6 - 0.7 ms: 37
+0.7 - 0.8 ms: 36
+0.8 - 0.9 ms: 14
+
+Latency Plot:
+5.3 - 5.4 ms: 2
+5.4 - 5.5 ms: 29
+5.5 - 5.6 ms: 36
+5.6 - 5.7 ms: 46
+5.7 - 5.8 ms: 29
+5.8 - 5.9 ms: 42
+5.9 - 6.0 ms: 47
+6.0 - 6.1 ms: 38
+6.1 - 6.2 ms: 40
+6.2 - 6.3 ms: 35
+6.3 - 6.4 ms: 30
+6.4 - 6.5 ms: 643
+6.5 - 6.6 ms: 6
+6.8 - 6.9 ms: 1
+
+Messages sent: 1024
+Messages received: 1024

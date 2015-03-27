@@ -1,0 +1,45 @@
+MIDI Router: a2jmidid
+MIDI Device: M-Audio Delta-1010 ICE1712
+MIDI Driver: ALSA Sequencer
+JACK Buffer Size: 1024
+
+Waiting for connections ...
+Waiting for test completion ...
+
+Reported out-port latency: 0.00-0.00 ms (0-0 frames)
+Reported in-port latency: 0.00-0.00 ms (0-0 frames)
+Average latency: 22.34 ms (2144.73 frames)
+Lowest latency: 21.34 ms (2049 frames)
+Highest latency: 22.83 ms (2192 frames)
+Peak MIDI jitter: 1.49 ms (143 frames)
+Average MIDI jitter: 0.08 ms (7.66 frames)
+
+Jitter Plot:
+0.0 - 0.1 ms: 951
+0.1 - 0.2 ms: 8
+0.2 - 0.3 ms: 4
+0.3 - 0.4 ms: 8
+0.4 - 0.5 ms: 6
+0.5 - 0.6 ms: 13
+0.6 - 0.7 ms: 5
+0.7 - 0.8 ms: 12
+0.8 - 0.9 ms: 7
+0.9 - 1.0 ms: 10
+
+Latency Plot:
+21.3 - 21.4 ms: 10
+21.4 - 21.5 ms: 4
+21.5 - 21.6 ms: 9
+21.6 - 21.7 ms: 10
+21.7 - 21.8 ms: 6
+21.8 - 21.9 ms: 11
+21.9 - 22.0 ms: 9
+22.0 - 22.1 ms: 4
+22.1 - 22.2 ms: 7
+22.2 - 22.3 ms: 3
+22.3 - 22.4 ms: 919
+22.4 - 22.5 ms: 31
+22.8 - 22.9 ms: 1
+
+Messages sent: 1024
+Messages received: 1024

@@ -1,0 +1,17 @@
+#!/bin/bash
+
+if [ $# -ne 1 ]; then
+	echo "Usage:  $0 <results-dir>"
+fi
+
+results_dir=$1
+
+echo "hw:1,0 Peak Jitter:"
+egrep '^Peak.*\([0-9]+ frames\)$' "${results_dir}"/test.hw\:1\,0.* | cut -f 3-4 -d : | sort | uniq -c
+echo "hw:2,0 Peak Jitter:"
+egrep '^Peak.*\([0-9]+ frames\)$' "${results_dir}"/test.hw\:2\,0.* | cut -f 3-4 -d : | sort | uniq -c
+echo "/dev/midi1 Peak Jitter:"
+egrep '^Peak.*\([0-9]+ frames\)$' "${results_dir}"/test._dev_midi1.* | cut -f 2-3 -d : | sort | uniq -c
+echo "/dev/midi2 Peak Jitter:"
+egrep '^Peak.*\([0-9]+ frames\)$' "${results_dir}"/test._dev_midi2.* | cut -f 2-3 -d : | sort | uniq -c
+

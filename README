@@ -1,0 +1,1059 @@
+jamrouter-0.2.0:
+-------------------------------------------------------------------------------
+JAMRouter:  JACK <-> ALSA MIDI Router v0.2.0
+-------------------------------------------------------------------------------
+
+JAMRouter is the best thing since sliced bread for routing MIDI events
+to/from JACK MIDI software ports and MIDI hardware supported by ALSA Raw
+MIDI, ALSA Sequencer, Generic Raw MIDI, and OSS MIDI.  At its core,
+JAMRouter is a near-sample-accurate low-latency low-jitter MIDI event
+router and translator, designed specifically with external hardware in
+mind, with an initial emphasis on providing full MIDI support and SysEx
+translation for the Roland Juno-106, and otherwise full compatibility
+with practically all MIDI hardware.  JAMRouter is a "must have" for any
+Linux MIDI musician using external MIDI hardware of any kind, especially
+analog synthesizers.  With the right hardware and a properly tuned
+linux-rt (realtime) kernel, near-sample-accurate over-the-wire MIDI
+communication with latencies under 5 milliseconds and jitter under 150
+microseconds is fully realizable.  JACK has been in the box too long.
+Now JACK can reliably communicate with MIDI hardware outside the box.
+For Juno-106 owners in particular, JAMRouter could very well be reason
+for switching to Linux!
+
+JAMRouter is design driven, feature driven, and incredibly stable.  More
+than just a MIDI router, JAMRouter comes with many options for
+translating MIDI events in real-time, fixing most of the common and
+several not so common MIDI protocol level communication incompatibilities
+between outboard MIDI gear and JACK MIDI based software.  Beyond that,
+JAMRouter comes with a few creative- minded MIDI event translation
+features with optional echo of these translations back to the JACK MIDI
+output port for sequencer recording, making it a very unique and valuable
+synth programming tool, with or without external MIDI gear.
+
+For most professional over-the-wire MIDI workloads on Linux, JAMRouter
+can already serve as a complete replacement for a2jmidid, a2jmidi_bridge,
+and j2amidi_bridge.  To be quite fair, these excellent tools still have
+their place.  The dbus support makes them better suited for general
+desktop integration, for one.  Their code is extremely stable and no
+doubt the cleanest example in plain C showing how to properly implement
+the JACK MIDI and ALSA Sequencer interfaces with the least amount of
+hassle.  While the sub-jack-buffer-period MIDI timing accuracy of
+a2jmidid has improved greatly over the years and is now good enough for a
+lot of people's needs, a2jmidid's timing is still dependent on the
+accuracy of the ALSA Sequencer direct interface (which at least does
+bypass most of the overhead of the sequencer queue, but still incurs more
+overhead than ALSA Raw MIDI) and the accuracy of jack_frame_time() (which
+appears to introduce some jitter that varies with system load).
+
+Bypassing both the ALSA Sequencer queue and any dependence on timing
+information obtained from jack_frame_time() with the combination of the
+ALSA Raw MIDI interface and an internal audio/MIDI period clock proved to
+be a successful combination toward accurate over-the-wire MIDI timing in
+the latest PHASEX development (even if other aspects of the realtime
+implementation turned out to be somewhat flawed and still need to be
+fixed).  JAMRouter is essentially the MIDI transport and timing layer
+pulled out of PHASEX, fully re-engineered for rock-solid real-time
+performance, with Rx and Tx fully implemented for all drivers, and
+fine-tuned from there.  As JAMRouter focuses on use with ALSA Raw MIDI,
+(which unlike ALSA Sequencer performs no event processing), active event
+processing becomes an absolute necessity for maintaining the widest
+degree of compatibility between JACK MIDI software and outboard MIDI
+gear.
+
+For these reasons, JAMRouter no doubt has a slightly different target
+audience than a2jmidid:  Musicians and studio professionals who need
+reliable timing accurate communication between outboard MIDI gear and
+JACK applications, and electronic musicians working with JACK enabled
+sequencers looking for new MIDI sequencing techniques.
+
+If a2jmidid and family work perfectly for your workload, there may be no
+reason to switch.  Whether you currently use a2jmidid or not, you may
+want to seriously consider JAMRouter if you:
+
+- work with an electronic music style where timing is everything.
+
+- are looking to add real-time event translation to your bag of synth
+    programming tricks,
+
+- are looking for solutions for keyboard controllers leaving hung notes
+    in soft-synths and sequencers due to lack of Note-On/Off,
+    Active-Sensing or All-Notes-Off processing,
+
+- use MIDI gear with slow MIDI Rx interfaces that need MIDI Tx bandwidth
+    regulation on the computer interface end,
+
+- happen to own early MIDI / pre-MIDI gear that uses 1- or 2-byte
+    End-SysEx sequences other than the default 0xF7,
+
+- have any sort of need to view the real-time MIDI stream with MIDI event
+    and JACK wake-up timing information,
+
+- or if you are the proud owner of a Juno-106.
+
+For timing performance, JAMRouter focuses on use with the ALSA Raw MIDI
+and Generic Raw MIDI drivers.  ALSA Sequencer direct and OSS support are
+included so that practically any MIDI interface device ever supported in
+Linux can be routed to JACK MIDI ports with the best possible performance
+available for that particular hardware.  No more games of wrong driver
+support for MIDI interfaces getting in the way of interfacing with modern
+JACK MIDI based software.
+
+For JAMRouter/a2jmidid jitter/latency testing results obtained from
+jack_midi_latency_test with JACK running at 96000 sample rate and audio
+buffer periods ranging from 64 to 2048, look in doc/latency-tests/.  Full
+testing rounds were performed with two different PCI based MPU-401 MIDI
+interfaces, a Creative SB-Live (EMU10K1 chip-set) and an M-Audio
+Delta-1010 (ICE1712 chip-set).  All tests were performed with a standard
+Din-5 MIDI cable connecting the interface's output to its input.  Current
+benchmarks are more than promising, as they show no real-time
+synchronization errors in over 50,000,000 events at default phase lock
+and latency settings across all buffer period sizes from 16 to 2048.
+JAMRouter's timing is rock-solid, with plenty of jitter-latency plots to
+prove it.  The included test results reflect the _highest_ peak jitter
+for each set of test parameters over the course of 12 hours, and thus
+should serve as an accurate indication of what can be expected on other
+systems.  Similar results should be obtainable from many modern (and some
+very old) PCI based MIDI interfaces, especially interrupt driven MPU-401
+variants and dual Rx/Tx UART variants.  Latency testing scripts are
+included with the JAMRouter source code in the latency-tests/ directory.
+For more information, see the LATENCY-JITTER TESTING section below.
+
+
+-------------------------------------------------------------------------------
+CAVEATS:
+-------------------------------------------------------------------------------
+
+- YMMV.  Great MIDI performance is dependent on thousands of technical
+  factors.  Commercial MIDI hardware varies widely in terms of buffer
+  sizes, latency, jitter, duplex performance, transmission rate, maximum
+  dependable receive rate, voltage, impedance, transmission noise,
+  harmonic distortion, pulse width, bit transmission frequency, byte
+  transmission frequency, MIDI spec implementation, etc.
+
+- A realtime (-rt) Linux kernel is a strict requirement for professional
+  audio and MIDI in the Linux world.  Thankfully, packages are available
+  through alternate repositories for many Linux distributions providing
+  linux-rt kernels, rtirq, and other system tuning tools.  Please
+  research what is appropriate for your specific distribution and
+  hardware if you haven't already.  Once you switch to -rt, you'll never
+  go back to a vanilla kernel again!  JAMRouter is designed as a realtime
+  application, and absolutely no performance guarantees can be made for
+  use under a non-rt kernel.  That being said, whether running on a
+  vanilla or -rt kernel, the system will need to be configured so that
+  all audio and MIDI software is allowed to run at realtime priorities.
+
+- USB MIDI devices traditionally lack the ability for sub-buffer-period
+  MIDI event scheduling, and thus will exhibit levels of jitter equal to
+  or greater than the buffer period.  The MIDI-over-USB standard lacks
+  the event timestamping found in other MIDI transport systems such as
+  MIDI-over-firewire.  Most USB MIDI devices internally deliver
+  unscheduled MIDI events once per buffer processing period for both
+  Din-5 Tx and USB output.  USB latency adds a minimum of 1 msec to both
+  Rx and Tx latency, and this latency is never guaranteed to be
+  consistent, and for some devices, can be an additional source of
+  jitter.  For these reasons, any USB device making use of only the
+  generic MIDI-over-USB standard cannot and will not ever be capable of
+  delivering accurate MIDI timing.
+
+- Flawless MIDI Rx with the the M-Audio Delta-1010 is impossible with the
+  current ALSA driver.  The device appears to have some data bits encoded
+  into one end of it's Rx buffer memory, possibly a proprietary hardware
+  acceleration for MIDI realtime message processing, or else just an end
+  of buffer marker that somehow makes its way into the serial encoder.
+  Without better documentation for the device's proprietary MPU-401
+  command set (specifically, methods of changing the MIDI Rx/Tx buffer
+  address and/or size, and working with proprietary MPU-401 hardware
+  optimizations), it is highly likely that the Linux driver will never be
+  fixed.  Even if the driver was fixed, poor isolation between audio and
+  MIDI electronics make this device a poor choice for recording audio in
+  conjunction with any sort of MIDI input, as the electrical pulses of
+  the incoming MIDI messages can be heard as a constant click or thump
+  across all of the audio inputs.  On the other hand, Tx on the
+  Delta-1010 is great, as its internally generated MIDI signaling does
+  not seem to interfere with the audio path the way Rx from other devices
+  does.  Tx timing is as good as one could ever hope for with such
+  commercial hardware.
+
+- Active Sensing support in its current form is untested.  The logic is
+  for all practical purposes identical to the working Active Sensing
+  implementation in PHASEX, so it should still work.  YMMV.
+
+- Timing using the ALSA Sequencer interface is not as accurate as timing
+  using any of the raw drivers (ALSA Raw MIDI, OSS MIDI, and Generic Raw
+  MIDI), due to extra latencies in alsa-lib and the ALSA kernel drivers
+  that cannot be predicted by JAMRouter.  Avoid use of the ALSA Sequencer
+  driver when used in conjunction real MIDI hardware at buffer periods
+  below 4-5 milliseconds (128 and below at 44100, or 256 and below at
+  96000), as this appears to be the threshold at which the realtime
+  synchronization of the buffering from the Raw MIDI device to the ALSA
+  Sequencer direct capture queue begins to break down and events are
+  delayed in the buffer.  Use of the ALSA Sequencer driver with software
+  Seq ports and/or at buffer periods larger than 5 milliseconds, however,
+  works well.  Any device with ALSA Sequencer support should also be
+  supported by ALSA Raw MIDI, so this limitation should present no
+  barrier to working with MIDI hardware.  For the best performance with
+  MIDI hardware, please use the ALSA Raw MIDI or Generic Raw MIDI
+  drivers.
+
+- The OSS sequencer interface is incomplete at best and use of
+  JAMRouter's 'oss' and 'oss2' is disabled by default.  Development for
+  the OSS /dev/sequencer and /dev/sequencer2 (/dev/music) device
+  implementations will likely not continue.  Use the 'generic' driver
+  with the OSS supplied /dev/midiNN interfaces instead.  This code has
+  has only been tested in its current form with ALSA's OSS emulation
+  support, and not with actual OSS in-kernel drivers installed.  YMMV.
+
+
+-------------------------------------------------------------------------------
+GOALS:
+-------------------------------------------------------------------------------
+
+* Reliability:
+
+    Whether playing music on stage, working in the studio, or writing
+    music on a laptop in a coffee shop, the instruments and tools need to
+    function properly and consistently in order to achieve good results.
+    Musicians need to be able to focus on the music, not shortcomings of
+    the tool-set.  JAMRouter has been thoroughly tested and bench-marked
+    for provable timing accuracy with no synchronization errors in over
+    50,000,000 events at default settings with the ALSA Raw MIDI driver.
+    Rx and Tx latency selection at all buffer sizes (16 to 2048) includes
+    minimum latency calculation to safeguard against synchronization
+    errors.  Additional safeguards prevent thread synchronization errors
+    at low buffer sizes.  Jitter is practically the same across all
+    buffer sizes.
+
+* Compatibility:
+
+    JAMRouter aims for full MIDI compatibility with all hardware devices
+    and JACK MIDI applications that properly support the MIDI 1.0
+    standard.  Beyond supporting the standard, JAMRouter also aims to be
+    fully tolerant of devices and software that break the standard at the
+    MIDI protocol level or that use the MIDI spec in unexpected ways.
+
+* Stage Friendly:
+
+    Low MIDI latency and low timing jitter.  No GUI or dependence on a
+    mouse.  Scriptable.  Perfect for rack-mount MIDI router or sound
+    module applications.  Near-sample-accurate timing for over-the-wire
+    MIDI performances.  Command line options are saved in LASH project or
+    JACK session.  Colorful MIDI stream and MIDI timing debug output are
+    suitable for performance visuals (given a terminal with fast smooth
+    scrolling video output).  With decent hardware running JAMRouter and
+    a recent linux-rt kernel with proper permissions, priority tuning,
+    audio buffer tuning, hardware tuning (BIOS settings, PCI latencies,
+    etc.), MIDI event latencies of under 10ms with timing jitter of under
+    300us should be well within reach for most commercial audio hardware,
+    and latencies of under 5ms and jitter under 150us should be available
+    from most modern PCI MPU-401 based MIDI hardware.  Default latency
+    settings and slightly more aggressive latency settings have been
+    rigorously tested at all buffer size / sample rate settings for
+    dependable rock-solid timing accuracy.
+
+* Studio Friendly:
+
+    Focus on work-flow.  The recent development work has been aimed at
+    making JAMRouter easy to use and efficient to manage using LASH or
+    JACK session management.  Again, the focus should be on the music,
+    not on remembering how to make the tools jump through a bunch of
+    hoops just to do their job.  Save the session, and know that the
+    exact same settings will be used the next time.  JAMRouter
+    development will continue in this direction with new features based
+    on community feedback.  The default MIDI device tuning settings
+    should work well under most circumstances.  JAMRouter takes the
+    approach of turning the features on as you need them.  For solving
+    nearly all of the common show-stopping MIDI protocol communication
+    problems with outboard MIDI gear, all the right MIDI event
+    translation options are provided.
+
+* Perfect Timing:
+
+    Or as perfect as possible with the selected MIDI hardware.  JACK MIDI
+    has perfect sample-accurate timing by design.  The ALSA sequencer
+    interface implements event timestamping, but a lot of software either
+    ignores or sidesteps this part of the API, most often resulting in
+    MIDI timing quantized to interval of the audio buffer period.  This
+    quantization of anywhere from 1.3ms to 23.2ms or more translates into
+    timing jitter.  This jitter has traditionally made over-the-wire MIDI
+    under Linux unreliable for serious musical work with intricate
+    timing, especially at buffer sizes greater than 256.  For Linux MIDI
+    musicians working out of a sequencer, latency generally isn't an
+    issue just as long as it is consistent.  Unfortunately, increasing
+    latency for better system stability and guard against audio buffer
+    underruns has traditionally increased MIDI timing jitter by the same
+    amount.  JAMRouter fully addresses these timing issues by generating
+    its own internal clock for timestamping received MIDI events and
+    scheduling event transmission, almost completely eliminating the
+    application imposed audio buffer period quantization jitter and
+    providing the same jitter performance across all buffer sizes.
+
+
+-------------------------------------------------------------------------------
+FEATURES:
+-------------------------------------------------------------------------------
+
+* Native MIDI Support:
+
+    JAMRouter supports all native Linux MIDI drivers and provides a full
+    2-way bridge between JACK MIDI ports and any ALSA Sequencer, ALSA Raw
+    MIDI, Generic Raw MIDI, or OSS Raw MIDI supported devices and ports.
+    If a MIDI device has any sort of Linux driver support, there is no
+    doubt that it will work with JAMRouter.
+
+* Realtime MIDI Clock:
+
+    Addresses the issue of how to accurately synchronize MIDI events with
+    individual frame positions within a buffer period instead of
+    quantizing the timing to whatever the audio buffer period happens to
+    be.  Typical audio hardware supports stable realtime operation at
+    anywhere from 1.3 - 23.2 milliseconds latency.  With no additional
+    synchronization, this audio latency becomes a self-imposed
+    quantization factor on event timing, adding MIDI timing jitter
+    roughly equal to the duration of one audio buffer processing period
+    (or even double that with some poorly designed hardware or drivers),
+    hence the need for an internal MIDI clock.
+
+    JAMRouter features a timerless, tickless audio / MIDI timing
+    synchronization system.  The clock latches onto the audio buffer
+    processing periods and generates a high-precision MIDI clock
+    reference, with much less jitter than timing based on when the audio
+    processing cycle actually wakes up (which can really be anywhere
+    within the period).  This clock is agnostic to the specific audio and
+    MIDI drivers being used and requires no timer interrupts other than
+    the system timers involved in clock_nanosleep().  In essence, the
+    timing accuracy achieved is only dependent on the MIDI hardware /
+    software and realtime scheduling latencies of the system.  With
+    decent consumer and professional MIDI hardware, sub-millisecond
+    timing accuracy is available with total MIDI event latency under 5ms,
+    accurate and responsive enough for most professional sound engineers
+    and musicians.  Some on-board and PCI based gameport I/O MPU-401
+    interfaces are capable of sustaining for days on end combined Rx+Tx
+    latency of less than 4 milliseconds and combined Rx+Tx jitter of well
+    under 150 microseconds.  Current benchmarks for all buffer period
+    sizes from 16 to 2048 all show at most 6 frames jitter at 44100, and
+    11 frames jitter at 96000, meeting or exceeding the specs advertised
+    by some hardware vendors.
+
+    JAMRouter uses separate threads with realtime scheduling for JACK,
+    MIDI Rx, and MIDI Tx.  Threads receive all synchronization info
+    through a realtime-safe lock-free ringbuffer, with a few extra bits
+    of logic to detect and correct for realtime CPU cache latency misses.
+    When timing checks performed by the MIDI Rx/Tx threads detect stale
+    timing synchronization (usually CPU cache latency issues), the timing
+    calculations are performed based on the last updated synchronization
+    data, with the only difference in the end result being that the
+    decayed average clock interval is not updated for a single buffer
+    processing period, amounting to a timestamping or scheduling
+    difference of a single frame at most.  This strategy allows for
+    flawless time synchronization even when the duration of the buffer
+    period is slightly lower than the CPU cache latency guarantees.
+
+* Running-Status Support:
+
+    JAMRouter properly restores the Running-Status byte when routing
+    messages to JACK MIDI, and optionally saves MIDI Tx bandwidth by
+    omitting the Running-Status byte sent over the wire whenever
+    possible.
+
+* Note-On/Off Tracking Support:
+
+    Even without a synth engine or any kind of sound module, JAMRouter
+    actively tracks Note-On and Note-Off messages, with proper support
+    for the All-Notes-Off controller.  Most Linux sequencers support only
+    the more common method of turning notes off by sending Note-On
+    messages with a Velocity of 0, and do not actually support Note-Off
+    messages or the All-Notes-Off controller, resulting in hung notes
+    recorded into a sequencer or played through a software synth.
+    JAMRouter solves this problem by converting all Note-Off messages
+    into Note-On-Velocity-0 messages, and by using the note tracking to
+    generate these messages whenever an All-Notes-Off controller message
+    is received.
+
+* Active-Sensing Support:
+
+    Traditionally, synth controllers that send Active Sensing messages
+    have been problematic in the Linux MIDI world.  Most software simply
+    does not support this part of the MIDI spec, and will either ignore
+    or drop Active Sensing messages.  For some devices, the only problem
+    this creates is the sounding of hung notes when the MIDI cable is
+    unplugged.  Some synth controllers, however, are designed save MIDI
+    bandwidth by omitting all note-off messages that coincide with the
+    current 300ms Active Sensing timeout, with no way to turn active
+    sensing off, making Active Sensing support on the other end an
+    absolute necessity (old Roland stage pianos come to mind).  JAMRouter
+    is equipped with 3 Active Sensing modes: "on" to properly set the
+    Active Sensing timeout and utilize note on/off tracking for sending
+    Note-Off (actually Note-On-Velocity-0) messages for all notes in play
+    in the case of an Active Sensing timeout, "thru" to simply pass the
+    Active Sensing messages through with no special handling, and "drop"
+    to quietly discard all Active Sensing messages.
+
+* Note to Pitchbend Translation:
+
+    When enabled, notes received on a selected channel are translated to
+    Pitchbend messages on the same or alternate channel.  Center note and
+    range in half-steps for Pitchbend tracking can be specified on the
+    command line.  Now, pitchbend movements can be generated to play the
+    pitchbender perfectly in tune.  No more guessing.
+
+* Note to Controller Translation:
+
+    When enabled, notes received on a selected channel are translated to
+    Controller messages on the same or alternate channel.  Unlock some of
+    the true secrets of synthesizer programming over MIDI.  Get results
+    that most people have to modify their gear to obtain.
+
+* Pitchbend to Controller Translation:
+
+    When enabled, Pitchbend messages received on a selected channel are
+    translated to Controller messages on the same or alternate channel.
+    As the Pitchbender is a 14bit parameter, the MSB is used as the 7bit
+    Controller value, and the LSB is discarded.
+
+* Translation Echo:
+
+    When enabled, all Pitchbend and Controller translations are echoed to
+    the JACK MIDI output port for sequencer recording.
+
+* Juno-106 SysEx Translation:
+
+    When enabled, adds complete support for the Juno-106.  All SysEx
+    messages received from the Juno-106 are translated into Controller
+    messages before being queued for the JACK MIDI output port, including
+    both patch dumps and controller changes.  The two bit-packed SysEx
+    controllers for the binary button and switch states are further
+    translated into independent Controllers for each button and switch.
+    All Controller messages received on the JACK MIDI input port are
+    translated back into SysEx messages before being transmitted back to
+    the Juno-106.  Binary state of all buttons and switches is tracked by
+    JAMRouter, allowing button and switch changes to be sequenced fully
+    independently.  See doc/juno-106.txt for full implementation details.
+
+* SysEx Translation Echo:
+
+    When enabled, all Pitchbend and Controller messages translated into
+    Juno-106 SysEx are echoed back to the JACK MIDI output port for
+    sequencer recording.  This allows for recording and saving Juno-106
+    SysEx while programming the Juno-106 with standard MIDI Controllers.
+
+* Non-Standard End-SysEx Byte Translation:
+
+    Some pre- MIDI-1.0 devices may send SysEx messages not terminated
+    with the standard byte value of 0xF7.  JAMRouter provides options to
+    specify an alternate terminating byte value, with an optional 2nd
+    terminator byte value to support any one or two byte End-SysEx
+    markers.
+
+* MIDI Bandwidth Optimization:
+
+    JAMRouter does what it can to dependably optimize MIDI bandwidth.
+    Beyond the single byte-per-message savings with the optional use of
+    Running Status, JAMRouter also removes duplicate Note-Off messages
+    and condenses multiple messages queued for the same Controller at the
+    same time into a single Controller message.  Optionally, any Note-Off
+    messages for all remaining keys in play can be translated into a
+    single All-Notes-Off Controller message, as is done by many synth
+    controllers.  In Juno-106 mode, multiple SysEx messages queued for
+    the same parameter at the same time are reduced to a single SysEx
+    message, allowing independent sequencing of multiple button states to
+    be recombined into a single SysEx parameter message.  This
+    combination of bandwidth saving features and the visual MIDI stream
+    and timing debug allow MIDI streams with intricate programming to be
+    fine-tuned so that notes sound as close to when they should sound as
+    possible given the current amount of MIDI bandwidth.
+
+* MIDI Bandwidth Regulation:
+
+    Optional guard time between transmission of MIDI bytes can be
+    specified for any Raw MIDI devices.  Optional guard time between
+    transmission of events may be specified both for Raw devices and ALSA
+    Sequencer ports.  With some MIDI interface / outboard MIDI gear
+    combinations, one or both of these options may be necessary for
+    reliable transmission when MIDI bandwidth becomes congested,
+    especially with large SysEx dumps, SysEx operating system loads, etc.
+    Some outboard MIDI gear and interface devices are known for
+    unreliable communication at full MIDI bandwidth.  Many more devices
+    are known for requiring slightly slower transmission speeds for
+    reliable OS loads through MIDI SysEx.
+
+* MIDI Stream Debug Output:
+
+    MIDI stream debug outputs each of the MIDI Rx/Tx and Jack
+    Input/Output ports in different colors for instant identification.
+    Timing debug adds color coded frame number for JACK wake-up time
+    positioning within the current MIDI clock period, along with
+    indicators for half-frame jitter adjustments to the clock period, and
+    timing information for every MIDI event.  Transmit timing debug adds
+    color-coded timing indicators for when the MIDI Tx thread sleeps and
+    updates its index into the MIDI event queue.  JAMRouter's full
+    (stream + timing) debug output allows all sorts of information in
+    regards to the live MIDI stream to be gleaned in one glance.  All
+    debug output is sent to a realtime-safe queue and processed by a
+    lower priority debug thread.  The performance impact on MIDI timing
+    of leaving the debug code enabled, if any, is negligible.
+
+* Hassle Free Session Management:
+
+    When saving JACK sessions, all running instances of JAMRouter,
+    each with their unique settings exactly as entered on the command
+    line, will be recalled with the same arguments and auto-connect on
+    both the JACK side and ALSA side to the exact same state they were in
+    when the session was saved.  With JACK session, keeping track of the
+    command line arguments for the MIDI routings of each project really
+    does become hassle free.  Set it and forget it.  On session load,
+    each instance of JAMRouter will be started in its own terminal.  The
+    same session management functionality is also available through LASH
+    (with the current limitation of running headless).
+
+
+-------------------------------------------------------------------------------
+PERFORMANCE TUNING GUIDELINES:
+-------------------------------------------------------------------------------
+
+* Driver Selection:
+
+    For the best MIDI timing with low-latency and low-jitter, try the
+    Generic Raw MIDI driver first (-M generic -D /dev/midi?), followed by
+    the ALSA Raw MIDI driver (-M raw -D hw:?,?), followed by the OSS
+    support with the generic MIDI driver (-M generic -D /dev/midi??),
+    and as a last resort, the ALSA Sequencer driver (-M seq -D ??:?).
+    For many devices, the performance under ALSA Raw MIDI, Generic Raw
+    MIDI, and OSS MIDI will be nearly identical.  While the ALSA
+    Sequencer driver is implemented with snd_seq_event_output_direct()
+    (thus bypassing the ALSA Sequencer queue), use of the ALSA Sequencer
+    driver in JAMRouter incurs more overhead in alsa-lib and in the
+    kernel device drivers, and will exhibit far more jitter than any of
+    the raw drivers (which is still far less jitter than what is provided
+    by a2jmidid).  Use of the ALSA Sequencer driver with MIDI hardware at
+    latencies under 5ms is not recommended.
+
+* Phase Lock:
+
+    The default MIDI period phase lock is 0.5, meaning that the start and
+    end of each MIDI timing period is calculated so that the JACK buffer
+    processing thread is expected to wake up and begin its work half way
+    through the calculated MIDI period.  Increasing the phase lock will
+    increase Rx latency while decreasing Tx latency by the same amount,
+    and vice versa.  The phase lock affects the timing of synchronizing
+    data between threads very directly, so it is important to note that
+    at single period Rx and Tx latencies, when the MIDI and JACK phases
+    are brought closer together than time in which the CPU-cache can
+    reliably deliver the contents of the lock-free sync_info[] and MIDI
+    event queue ringbuffers, JAMRouter will automatically increase Rx or
+    Tx latency by one full period to compensate as a safeguard against
+    synchronization error.  Increasing phase lock increases MIDI Rx -->
+    JACK Output latency while decreasing JACK Input --> MIDI Tx latency.
+    Decreasing phase lock decreases MIDI Rx --> JACK Output latency while
+    increasing JACK Input --> MIDI Tx latency.  Within reasonable limits,
+    the phase lock allows trading Rx for Tx latency and vice versa for
+    individual use cases.  The --phase-lock (-z) option should be treated
+    as an expert option.  Leaving phase lock at the default 0.5 is in
+    most cases to best choice, especially at buffer sizes of 128 and
+    below.
+
+* Buffer Period Size:
+
+    Audio buffer period size should be chosen according to the audio
+    requirements in conjunction with the MIDI workload.  JAMRouter's
+    jitter performance is nearly identical across all buffer period sizes
+    from 16 to 2048 (the full range supported by JACK).
+
+    For recording over-the-wire MIDI performances into a JACK MIDI
+    sequencer, the audio processing load should be kept as light as
+    possible to allow for lower buffer sizes, and thus lower latency.  At
+    buffer sizes of 256 and lower, a proper MIDI recording chain
+    consisting of Keyboard Controller --> PC Interface --> JAMRouter -->
+    JACK MIDI Sequencer --> JAMRouter --> PC Interface --> MIDI Sound
+    Module with a total keypress-to-note-on latency of less than 10
+    milliseconds and total system jitter of less than 150 microseconds is
+    fully realizable.  Unless the sequencer is performing any sort of
+    recording quantization, this setup guarantees that the timing that is
+    heard for the initial performance is essentially the same timing that
+    is heard when played back from the sequencer, with the only
+    difference being the difference in MIDI Tx + Sound Module Rx jitter
+    from recording to playback.
+
+    For DAW recording of sequenced synth lines through external MIDI
+    gear, the audio buffer size should be kept as high as is needed to
+    allow for dependable xrun free performance with the chosen audio
+    workload.  JAMRouter's jitter performance is the same or even better
+    at higher latencies.  Unlike recording live musicians, the task of
+    recording sequenced material does not require low latencies, just
+    consistent latencies (low jitter).  With JAMRouter, there is never a
+    need to lower the buffer period size down to levels that do cause
+    occasional (or frequent) xruns just to get more accurate MIDI timing.
+
+    For MIDI only applications such as MIDI routers and event processors,
+    much lower latencies can be realized without the audio processing
+    overhead.  With the appropriate hardware supporting xrun free
+    operation at buffer sizes as low as 16, it is quite possible to use
+    JAMRouter to build a MIDI router / event processor with less than 2
+    milliseconds total Rx+Tx MIDI event latency and less than 150
+    microseconds total Rx+Tx jitter, on par with (or better than) the
+    timing offered by commercially available dedicated MIDI hardware
+    performing these functions.
+
+* Tx Byte Guard Time:
+
+    The --byte-guard-time (-g) option should be used only in cases where
+    the receiving device is unable to operate at full MIDI bandwidth.
+    This option imposes a minimum delay between the transmission of
+    successive bytes by forcing the MIDI Tx thread to sleep for the
+    specified number of microseconds after writing each byte to the
+    device.  Byte guard times below 320 microseconds (the time needed to
+    transmit one MIDI byte at wire-speed) may be ineffective at
+    regulating MIDI bandwidth, as this sleep time is imposed on
+    JAMRouter's MIDI Tx thread, and not within the device driver.  Byte
+    guard times of 640 microseconds (the point at which MIDI bandwidth is
+    theoretically cut in half) and below are not known to interfere with
+    timing accuracy.  320 to 640 should be considered the useful range of
+    this option.  Please note that this option is only able to regulate
+    the byte-by-byte transmission speed, and not the bit-rate of the
+    interface itself (which cannot be changed with most hardware and
+    drivers).
+
+* JACK and qjackctl:
+
+    While qjackctl provides a MIDI Driver dropdown in the Setup window,
+    JACK does not support any MIDI system other than JACK MIDI.  The MIDI
+    Driver option in qjackctl should invariably be set to 'none', and not
+    'raw', 'seq', or 'alsa_midi'.  JAMRouter is the piece of software
+    connecting to natively supported MIDI devices, not JACK.  Keeping
+    this one fact in mind will help avoid the common confusion
+    surrounding qjackctl's MIDI Driver option.
+
+
+-------------------------------------------------------------------------------
+LATENCY-JITTER TESTING:
+-------------------------------------------------------------------------------
+
+* MIDI Interface Benchmarking:
+
+    A set of latency testing scripts utilizing jack_midi_latency_test has
+    been included in latency-tests/.  All tests should be run from the
+    latency-tests/ directory.  For all tests, loop the device's MIDI Out
+    back to its MIDI In using a standard DIN-5 MIDI cable.
+
+    jamrouter-latency-test:  This script will perform a single test with
+    full JAMRouter stream and debug timing output followed by output of
+    the test parameters and the jack_midi_latency_test results.  Run the
+    script without arguments for help or edit the script to change the
+    default testing parameters.  Please note that the current default
+    testing latencies are slightly more aggressive than the JAMRouter
+    defaults.
+
+    run-batch:  This script will perform a numbered series of tests,
+    across the ranges of hardware devices, buffer period sizes / test
+    iterations, phase lock values, and byte guard time values.  These
+    test ranges can be easily set at the top of the script to suit
+    individual testing needs.
+
+    analyze-test:  Run this script to view selected test debug output and
+    peak jitter results similar to what is displayed by run-batch while
+    the tests are running.
+
+    analyze-full:  When analyze-test fails to show the suspect MIDI
+    events responsible for timing failure, the analyze-full script will
+    sort the test output based on the event frame time as originally
+    scheduled by jack_midi_latency_test, allowing any timing
+    irregularities to be located visually.
+
+* Overview of Testing Results from 2015-03-21 --> 2015-03-22:
+
+    Average Rx+Tx Latency at Default Settings:
+    ----------------------------------------------------------------------
+                             32        64       128       256       512
+    ----------------------------------------------------------------------
+    Delta-1010  44100:   3.22ms    4.67ms    9.02ms   17.73ms   35.15ms
+    SB-Live     44100:   3.29ms    4.75ms    9.10ms   17.81ms   35.22ms
+    ----------------------------------------------------------------------
+                             32        64       128       256       512
+    ----------------------------------------------------------------------
+    Delta-1010  48000:   2.98ms    4.32ms    8.32ms   16.32ms   32.32ms
+    SB-Live     48000:   3.06ms    4.39ms    8.39ms   16.39ms   32.39ms
+    ----------------------------------------------------------------------
+                             32        64       128       256       512
+    ----------------------------------------------------------------------
+    Delta-1010  88200:   2.50ms    3.23ms    4.68ms    9.03ms   17.74ms
+    SB-Live     88200:   2.58ms    3.30ms    4.75ms    9.11ms   17.81ms
+    ----------------------------------------------------------------------
+                             16        32        64       128       256
+    ----------------------------------------------------------------------
+    Delta-1010  96000:   2.16ms    2.32ms    2.99ms    4.32ms    8.32ms
+    SB-Live     96000:   2.23ms    2.40ms    3.07ms    4.40ms    8.40ms
+    ----------------------------------------------------------------------
+
+
+    Peak Rx+Tx Jitter for All Buffer Sizes (> 1,000,000 events / item):
+    ----------------------------------------------------------------------
+                  Delta-1010/   Delta-1010/   SB-Live/      SB-Live/
+                  ALSA Raw      Generic Raw   ALSA Raw      Generic Raw
+    ----------------------------------------------------------------------
+    44100:         4 frames      3 frames      6 frames      5 frames
+    48000:         4 frames      3 frames      6 frames      5 frames
+    88200:         8 frames      6 frames     14 frames     12 frames
+    96000:        10 frames      8 frames     11 frames     10 frames
+    ----------------------------------------------------------------------
+
+* Notes:
+
+    As of JAMRouter-0.1.9, no synchronization errors have been detected
+    in hundreds of tests (over 50,000,000 MIDI events in total) at default
+    settings for all buffer period sizes.
+
+    As of JAMRouter-0.2.0, the best timing performance is offered by the
+    Generic Raw MIDI driver, consistently scoring 1 to 2 frames lower in
+    all jitter measurements across the board.
+
+
+-------------------------------------------------------------------------------
+REQUIREMENTS:
+-------------------------------------------------------------------------------
+
+Required:
+  * ALSA >= 1.0.18
+  * JACK (JACK or JACK2/jackdmp should work).
+  * Realtime (-rt) Linux Kernel (latest 3.0.x-rt or newer recommended).
+  * 1.0 GHz or faster CPU.
+
+Optional:
+  * LASH >= 0.5.4.
+  * libuuid (required by LASH).
+
+
+-------------------------------------------------------------------------------
+COMPILING AND INSTALLING JAMRouter:
+-------------------------------------------------------------------------------
+
+For a standard configuration optimized for your CPU:
+
+    cd jamrouter
+    aclocal && autoconf && automake && autoheader
+    ./configure --enable-arch=native
+    make
+    make install
+
+Other useful configure flags are --without-lash, --without-juno, and
+--enable-debug="-g -O0".
+
+See INSTALL for full compilation and installation instructions.
+
+
+-------------------------------------------------------------------------------
+RUNNING JAMRouter:
+-------------------------------------------------------------------------------
+
+Usage:  jamrouter [options] 
+
+JAMRouter Options:
+
+ -v, --version           Display version and exit.
+ -h, --help              Display this help message.
+ -u, --uuid=             Set UUID for JACK Session handling.
+ -d, --debug=            Can be repeated.  Choose from: full, init, driver,
+                           stream, timing, tx-timing, note, event, session.
+LASH Options:
+
+ -P, --lash-project=     LASH project name.
+ -S, --lash-server=      LASH server address.
+ -I, --lash-id=          LASH client ID.
+ -L, --disable-lash      Disable LASH completely for the current session.
+
+MIDI Device / Port Options:
+
+ -l, --list              Scan and list MIDI devices.
+ -M, --midi-driver=      MIDI driver:  seq, raw, generic, oss, or dummy.
+ -D, --device=           MIDI Rx/Tx port or device name (driver specific).
+ -r, --rx-device=        MIDI Rx port or device name (driver specific).
+ -t, --tx-device=        MIDI Tx port or device name (driver specific).
+ -x, --rx-latency=       MIDI Rx latency periods (default 1 for buf > 128).
+ -X, --tx-latency=       MIDI Tx latency periods (default 1 for buf > 128).
+ -g, --byte-guard-time=  Guard time in microseconds after Tx of MIDI byte.
+ -G, --event-guard-time= Guard time in microseconds after Tx of MIDI event.
+ -i, --input-port=       JACK MIDI Input port name.
+ -o, --output-port=      JACK MIDI Output port name.
+ -y, --rx-priority=      Realtime thread priority for MIDI Rx thread.
+ -Y, --tx-priority=      Realtime thread priority for MIDI Tx thread.
+ -z, --phase-lock=       JACK wakeup phase in MIDI Rx/Tx period (.06-.94).
+
+MIDI Message Translation Options:
+
+ -A, --activesensing=    Active-Sensing mode:  on, thru, drop  (default on).
+ -R, --runningstatus     When possible, omit Running-Status byte on MIDI Tx.
+ -T, --sysexterminator=  <hex-val>  End SysEx byte if not the standard 0xF7.
+ -U, --extraterminator=  <hex-val>  2nd byte for 2-byte SysEx terminators.
+ -n, --noteonvelocity=   <hex-val>  Note-On Velocity for MIDI Tx.
+ -N, --noteoffvelocity=  <hex-val>  Note-Off Velocity for MIDI Tx.
+ -0, --rxrealnoteoff     Send Note-Off for Velocity-0-Note-On on JACK output.
+ -F, --txrealnoteoff     Send Note-Off for Velocity-0-Note-On on MIDI Tx.
+
+ -f, --txallnotesoff     With no notes left in play, translate multiple Note-
+                           Off messages to All-Notes-Off Controller for Tx.
+
+ -J, --juno              Enable Juno-106 SysEx <--> Controller translation.
+                           (See /usr/local/share/doc/juno-106.txt).
+
+ -k, --keymap=           <rx-chan>,<tx-chan>,<controller>
+                           Map MIDI notes to controller on alternate channel.
+                           (Can be repeated once per Rx channel.)
+
+ -p, --pitchmap=         <rx-chan>,<tx-chan>,<center-note>,<pitchbend-range>
+                           Map MIDI notes to pitchbend on alternate channel.
+                           (Can be repeated once per Rx channel.)
+
+ -q, --pitchcontrol=     <rx-chan>,<tx-chan>,<controller>
+                           Map pitchbend to controller on alternate channel.
+                           (Can be repeated once per Rx channel.)
+
+ -e, --echotrans         Echo translated pitchbend and controller messages
+                           to JACK MIDI output port for sequencer recording.
+
+ -s, --echosysex         Echo translated Juno-106 SysEx messages
+                           to JACK MIDI output port for sequencer recording.
+
+
+Examples:
+
+* List all ALSA Sequencer, ALSA Raw MIDI, and JACK MIDI ports/devices:
+
+    jamrouter -l
+
+* Connect generic /dev/midi1 device input of MusE JACK MIDI port 2:
+
+    jamrouter -M generic -D /dev/midi1 -o MusE:jack-midi-2_in
+
+* Make Juno-106 available to JACK on Generic Raw MIDI /dev/midi1, with
+  stream and timing debug output full Juno SysEx translation.  Map all
+  Note-On messages within an octave of Middle-C on channel 15 to
+  Pitchbender on channel 1.  Map all Note-On messages on channel 16 to
+  VCF Freq on channel 1:
+
+    jamrouter -M generic -D /dev/midi1 -J -p 15,1,60,12 -k 16,1,19
+
+* Ideal Juno-106 programming mode:  same as above, with the addition of
+  echoing translated Pitchbend and Controller 19 messages back to the
+  JACK output port, and saving MIDI bandwidth by making use of Running
+  Status:
+
+    jamrouter -M generic -D /dev/midi1 -J -p 15,1,60,12 -k 16,1,19 -e -R
+
+* Ideal Access Virus b programming mode: Make use of Running-Status to
+  save bandwidth, translate keys on channel 15 to Filter 1 Cutoff on
+  channel 1, translate keys on channel 16 to Filter 2 Cutoff also on
+  channel 1, and additionally echo these translations back to the JACK
+  MIDI output for sequencer recording:
+
+    jamrouter -M generic -D /dev/midi2 -R -k 15,1,40 -k 16,1,41 -e
+
+* Make OSS Raw MIDI device /dev/midi02 available on JAMRouter's JACK MIDI
+  input/output:
+
+    jamrouter -M generic -D /dev/midi02
+
+* Run jamrouter as a JACK MIDI stream and timing debugger without
+  connecting to ALSA Seq, ALSA Raw MIDI, or OSS MIDI devices:
+
+    jamrouter -M dummy -d full
+
+* Send real Note-Off messages instead translating to Note-On-Velocity-0
+  messages on both MIDI Tx and JACK MIDI output, and enable stream,
+  timing, and testing debug output when measuring latency and jitter with
+  jack_midi_latency_test:
+
+    jamrouter -M raw -D hw:1,0 -F -0 -d stream -d timing -d testing
+
+
+-------------------------------------------------------------------------------
+RATIONALE:
+-------------------------------------------------------------------------------
+
+* Timing is everything.  In the days of sample-accurate in-the-box
+  sequencing, hardware MIDI is often considered too jitter-prone to be
+  considered for serious projects.  Recording over-the-wire MIDI synth
+  parts is usually very time consuming, usually requiring the same level
+  of care and similar set of tricks as guitar recording to produce
+  solidly timed tracks.  In many cases, both the computer's MIDI
+  interface and the outboard gear's MIDI interface are capable of
+  low-latency low-jitter rock-solid timing on their own, but only with
+  the right combination of drivers and software.  JAMRouter is engineered
+  specifically to bridge this gap, offering the best generic solution
+  possible for reliable rock-solid timing-accurate communication between
+  JACK MIDI applications and MIDI hardware of any kind.  For some styles
+  of electronic music with intricate timing and lots of controller
+  changes, JAMRouter offers Linux/ALSA/JACK the capabilities to make
+  Linux a viable platform for a wide variety of professional
+  over-the-wire MIDI applications, limited only by the quality and
+  variety of JACK MIDI software.
+
+* A new development bed was needed for bringing together under one roof
+  all the code and functionality of the MIDI transport layers from PHASEX
+  (the dark purple analog modeling beast of a synthesizer for Linux) and
+  the long abandoned vsex (the Virus SysEX dump utility for Linux).  With
+  JAMRouter being a very different use case for the internal MIDI queue
+  and event clock than PHASEX, this became the perfect project for
+  assembling what will no doubt eventually turn into a generic software
+  MIDI routing library.  Development on the MIDI transport code is much
+  simpler without having to look at all the PHASEX specific code.  This
+  has allowed a complete overhaul of the of the MIDI transport code and
+  its timing core, with rock-solid results.
+
+* A few MIDI libraries with varying degrees of functionality exist for
+  Linux, but none of them meet the specific needs of both JAMRouter and
+  PHASEX in a way that makes them easy to implement in both projects.
+  Other MIDI transport libraries like TSE tend to favor a rich feature
+  set designed for sequencers.  The JAMRouter MIDI transport code focuses
+  on the MIDI transport features needed for live performance, studio
+  recording, and hardware interfacing issues associated with connecting
+  hardware and software MIDI based synthesizers, controllers, and event
+  processors.  The JAMRouter features could be developed much more
+  quickly and accurately using a MIDI transport layer already adapted as
+  an application framework (PHASEX).  Very little of the JAMRouter code
+  is necessarily JAMRouter specific.  One of the goals of JAMRouter is to
+  create libjam, to which both JAMRouter and PHASEX will eventually link.
+
+* A lonely Juno-106 (OK... more like a Juno-105 with one of the wave
+  generator chips half dead) only part way through its restoration, and
+  needed for some synth lines on some new projects.  The Juno-106 is the
+  first analog flagship model synthesizer incorporating MIDI produced by
+  Roland, a true piece of living musical history.  Such a classic
+  deserves JAMRouter.  Some new tunes in the works deserve the Juno-106.
+  The creative side of the MIDI event translation allows Juno-106
+  programming to be taken to a whole new level.  Here's a hint to
+  unlocking to true secrets buried in the Juno-106 without modification:
+  This synth is very well designed, and great care was taken to map the
+  VCF Frequency controller values directly to the frequencies
+  corresponding to the MIDI notes of the same value, a feature highly
+  desired in analog and digital synths alike, but unfortunately a design
+  detail completely ignored in a lot of synthesizers.
+
+* A lonely Access Virus b, arguably the best digital analog modeling
+  synth ever made, topped only by its successors.  Great reverb
+  processing makes it a poor man's Lexicon.  Also has a clock generator
+  and arpeggiator, very useful for stress-testing the MIDI transport in
+  JAMRouter.  The Virus b was advertised as and certainly is the Swiss
+  Army Knife of synthesizers.  With JAMRouter, the Virus b can take it's
+  rightful place as the Swiss Army Knife of outboard gear in a Linux
+  based studio.
+
+* Along with preserving musical history by preserving and restoring early
+  MIDI hardware from a massively influential era, we also need to be able
+  to program this vintage MIDI gear with modern studio hardware.  Many
+  synthesizers from this era require external programmer units with
+  knobs, buttons, sliders, and sometimes lights and LCD displays to send
+  the appropriate controller and/or SysEx data.  Roland never designed a
+  patch programmer for the Juno-106.  (They did however release an
+  external arpeggiator.  There are excellent arpeggiators for JACK, so an
+  including an arpeggiator in JAMRouter is not on the priority list).
+  SysEx only parameter control makes programming the Juno-106 in most
+  sequencers a chore.  A few weeks of programming on JAMRouter will end
+  up saving more than a few weeks in Juno-106 controller programming time
+  this year alone.
+
+* A lot of older synthesizers are very difficult to interface with modern
+  computers due to slight deviations from the MIDI spec between the
+  companies in the early years as everyone was simultaneously yet
+  independently implementing a new shared specification.  Some MIDI gear
+  is intolerant of deviations from the spec by other MIDI gear.  Some
+  MIDI gear is expectant of its own deviations or omissions from the MIDI
+  spec when interfacing with other MIDI gear.  With the exception of
+  clock signal (re)generation, JAMRouter addresses every software
+  addressable issue possible, and provides the MIDI event processing
+  necessary to make perfect use of what would otherwise be unusable or
+  undependable MIDI gear when it comes to interfacing with JACK MIDI
+  applications running on Linux machines.  A few weeks of programming
+  will solve more than a few weeks of engineering hassles in the studio
+  this year alone, even with MIDI gear that is generally considered
+  faithfully MIDI compliant through and through.
+
+* When a professional studio engineer, a semi-professional DJ, and a
+  semi-professional electronic musician were asked if they would consider
+  Linux as a professional audio production platform, their replies were
+  nearly identical.  All three had researched the possibility after
+  seeing and hearing about the successes of Ardour, JACK, the Linux
+  realtime kernel, along with the rich assortment of audio and MIDI
+  software available for JACK.  When it came down to it, all three of
+  these engineer-musicians decided against using Linux as a professional
+  audio production platform for the same reason:  Poor out-of-the-box
+  MIDI timing when using all the latest JACK MIDI software.  With a
+  Juno-106 and Access Virus b sitting in storage for years for the exact
+  same reason, these concerns could not be refuted at the time.  This
+  has been one of the primary motivating factors in the development of
+  JAMRouter.
+
+
+-------------------------------------------------------------------------------
+LICENSING AND COPYRIGHT:
+-------------------------------------------------------------------------------
+
+JAMRouter is distributed under the terms of the GNU Public License,
+version 3.  See LICENSE for details.
+
+JAMRouter source code and documentation:
+
+    Copyright (C) 2015 William Weston <william.h.weston@gmail.com>.
+
+LASH session management:
+
+    Copyright (C) 2010 Anton Kormakov <assault64@gmail.com>
+    Copyright (C) 2012-2015 William Weston <william.h.weston@gmail.com>
+
+
+See AUTHORS for details.
+
+
+-------------------------------------------------------------------------------
+OBTAINING JAMRouter:
+-------------------------------------------------------------------------------
+
+Currently, JAMRouter development sources are only available via git:
+
+        git clone https://github.com/williamweston/jamrouter.git
+
+
+-------------------------------------------------------------------------------
+CONTACTING THE AUTHOR:
+-------------------------------------------------------------------------------
+
+The primary goal of the JAMRouter project is to offer a free professional
+quality timing accurate software MIDI transport layer for interfacing
+outboard MIDI gear of any kind, through any MIDI device supported by any
+of the Linux/ALSA/OSS MIDI drivers, with JACK MIDI enabled software.
+
+The following should be considered bugs and reported immediately:
+
+- Juno-106 communication difficulties of any kind.
+- Hung notes for any reason (please examine JAMRouter options first).
+- Verifiable synchronization errors at default settings.
+- Improper latency calculations.
+- Segfaults, crashes, or system lockups.
+- Build errors that prevent JAMRouter from compiling.
+
+Please send any kind of feedback you will for JAMRouter.  Any information
+regarding the following will also be greatly appreciated:
+
+- Feedback regarding untested Active-Sensing support.
+- Jitter and latency testing results.
+- Success stories and links to resulting music.
+- Experience with quirks and odd behavior of any kind encountered with
+  vintage analog and early digital gear, especially pre- MIDI-1.0 or
+  mid-1980's MIDI gear that plays odd tricks with the MIDI spec.
+- Embedded hardware projects, DIY projects, commercial endeavors, etc.
+
+What do you like about JAMRouter?
+What don't you like about JAMRouter?
+What features do you think are missing?
+What would you do differently?
+What hardware and/or software do you use with JAMRouter?
+What are you looking for in a UI?
+What are you looking for in a MIDI transport library for Linux?
+Does anything prevent you from using JAMRouter dependably on stage?
+Does anything preventing you from using JAMRouter dependably in the studio?
+
+Any feedback can only influence JAMRouter (eventually libjam) development
+to move in a positive direction.
+
+
+--Best Regards,
+  William Weston <william.h.weston@gmail.com>
+
+-------------------------------------------------------------------------------

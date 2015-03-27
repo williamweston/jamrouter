@@ -1,0 +1,175 @@
+#!/bin/bash
+
+# first option is required.  rest are optional
+if [ $# -gt 8 -o $# -lt 1 ] ; then
+	echo "Usage:  $0 <buffer-size> [<phase-lock> <raw-device> <test-samples>"
+	echo "            <byte-guard-time> <message-size> <rx-latency> <tx-latency>]"
+	echo
+	echo "        For <rx-latency> and <tx-latency>, a value of -1 will use the"
+	echo "            JAMRouter defaults, and a value of 0 will use the slightly"
+	echo "            more agressive latency testing defaults."
+	exit 1
+fi
+
+# defaults without supplied args
+phase_lock=0.5
+guard_time=0
+buffer_size=64
+midi_device=hw:1,0
+devce_name=''
+latency_args=''
+rx_latency=-1
+tx_latency=-1
+message_size=3
+result_file=/tmp/latency.$$
+
+# gather command line args
+if [ $# -ge 8 ]; then
+	tx_latency="$8"
+fi
+if [ $# -ge 7 ]; then
+	rx_latency="$7"
+fi
+if [ $# -ge 6 ]; then
+	message_size="$6"
+fi
+if [ $# -ge 5 ]; then
+	guard_time="$5"
+fi
+if [ $# -ge 4 ]; then
+	test_samples="$4"
+fi
+if [ $# -ge 3 ]; then
+	midi_device="$3"
+fi
+if [ $# -ge 2 ]; then
+	phase_lock="$2"
+fi
+if [ $# -ge 1 ]; then
+	buffer_size="$1"
+fi
+
+# set default latency testing latencies if 0 specified
+if [ $rx_latency -eq 0 ]; then
+	case $buffer_size in
+		16)
+			rx_latency=5
+			;;
+		32)
+			rx_latency=3
+			;;
+		64)
+			rx_latency=2
+			;;
+		128)
+			rx_latency=1
+			;;
+		256|512|1024|2048)
+			rx_latency=1
+			;;
+	esac
+fi
+if [ $tx_latency -eq 0 ]; then
+	if  [ $buffer_size -eq 16 ]; then
+		tx_latency=2
+	else
+		tx_latency=1
+	fi
+fi
+
+# set rx latency args for non-jamrouter-default values
+if [ $rx_latency -eq -1 ]; then
+	rx_latency='(default)'
+elif [ $rx_latency -gt 0 ]; then
+	latency_args="-x $rx_latency"
+fi
+
+# set tx latency args for non-jamrouter-default values
+if [ $tx_latency -eq -1 ]; then
+	tx_latency='(default)'
+elif [ $tx_latency -gt 0 ]; then
+	latency_args="$latency_args -X $tx_latency"
+fi
+
+# set driver and device name based on device designation
+device1_name=`cat /proc/asound/cards | grep '^ 1' | cut -c 23-80`
+device2_name=`cat /proc/asound/cards | grep '^ 2' | cut -c 23-80`
+if echo -n "$midi_device" | egrep -q '^hw:[0-9]'; then
+	driver='raw'
+    midi_driver='ALSA Raw MIDI'
+	if [ "$midi_device" == 'hw:1,0' ]; then
+		device_name=$device1_name
+	elif  [ "$midi_device" == 'hw:2,0' ]; then
+		device_name=$device2_name
+	fi
+elif echo -n "$midi_device" | egrep -q '^[0-9]+:[0-9]'; then
+	driver='seq'
+    midi_driver='ALSA Sequencer'
+	if [ "$midi_device" == '20:0' ]; then
+		device_name=$device1_name
+	elif  [ "$midi_device" == '24:0' ]; then
+		device_name=$device2_name
+	fi
+elif echo -n "$midi_device" | egrep -q '^/dev/'; then
+	driver='generic'
+    midi_driver='Generic Raw MIDI'
+	if echo -n "$midi_device" | egrep -q '.*midi0?1'; then
+		device_name=$device1_name
+	elif echo -n "$midi_device" | egrep -q '.*midi0?2'; then
+		device_name=$device2_name
+	fi
+elif echo -n "$midi_device" | egrep -q '[0-9]+'; then
+	driver='oss2'
+	midi_driver='OSS MIDI 2 (/dev/sequencer2)'
+	if echo -n "$midi_device" | egrep -q '^2$'; then
+		device_name=$device1_name
+	elif echo -n "$midi_device" | egrep -q '^3$'; then
+		device_name=$device2_name
+	fi
+fi
+
+# keep track of test parameters to include with results
+jamrouter_args="-M $driver -D $midi_device -d stream -d testing -d timing -F -0 -z $phase_lock -g $guard_time $latency_args"
+sample_rate=`jack_samplerate`
+
+# set buffer size accroding to test parameters
+jack_bufsize $buffer_size
+
+echo "Starting JAMRouter:  jamrouter $jamrouter_args"
+jamrouter $jamrouter_args &
+time jack_midi_latency_test -s $test_samples -m $message_size > $result_file 2>&1 &
+
+# give jamrouter and jack_midi_latency_test a chance to fully start
+sleep 2
+
+# connect jamrouter <--> jack_midi_latency_test
+jack_connect jack_midi_latency_test${test_inst}:out jamrouter${jamr_inst}:midi_in
+sleep 1
+jack_connect jamrouter${jamr_inst}:midi_out jack_midi_latency_test${test_inst}:in
+
+# wait for jack_midi_latency_test to complete
+sleep 1
+wait %2
+
+# send SIGHUP to jamrouter to shutdown
+kill -HUP %1 > /dev/null 2>&1
+wait %1
+
+# output test parameters
+sync
+echo
+echo -en "\\033[0;39m"
+echo "MIDI Device:         ${midi_device}  ${device_name}"
+echo "MIDI Driver:         ${midi_driver}"
+echo "Phase Lock:          ${phase_lock}"
+echo "Sample Rate:         ${sample_rate}"
+echo "Buffer Size:         ${buffer_size}"
+echo "Rx Latency Periods:  ${rx_latency}"
+echo "Tx Latency Periods:  ${tx_latency}"
+echo "JAMRouter Cmd:       src/jamrouter $jamrouter_args"
+echo "Latency Test Cmd:    jack_midi_latency_test -s $test_samples -m $message_size"
+echo
+
+# output test results
+cat $result_file
+rm $result_file

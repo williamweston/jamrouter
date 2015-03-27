@@ -1,0 +1,96 @@
+%define		jamrouter_version       0.2.0
+%define     gitversion              @PACKAGE_VERSION@
+
+%ifarch %ix86 i386 i486 i586 i686 athlon geode ia32e atom
+ %define	build_32bit	1
+%endif
+%if 0%{!?build_32bit:1} && 0%{?__isa_bits} == 32
+ %define	build_32bit	1
+%endif
+
+%define atom_build %{?_with_atom:1} %{!?_with_atom:0}
+
+%if 0%{!?atom_build:1}
+ %if 0%{!?build_32bit:1}
+  %define enable_arch atom
+ %else
+  %define enable_arch atom64
+ %endif
+%else
+ %define enable_arch %{_target_cpu}
+%endif
+
+
+Name:		jamrouter
+Version:	%{jamrouter_version}
+Release:	0%{?beta_version:.%{beta_version}}%{?dist}
+Summary:	JAMRouter: JACK <--> ALSA MIDI Router
+Group:		Applications/Multimedia
+License:	GPLv3+
+URL:		http://github.com/williamweston/jamrouter/
+
+Source0:    https://github.com/downloads/williamweston/jamrouter/%{name}-%{gitversion}.tar.gz
+BuildRoot:	%{_tmppath}/%{name}-%{version}-%{release}-root
+
+BuildRequires:	glibc-devel >= 2.3.0
+BuildRequires:	glib2-devel >= 2.12.0
+BuildRequires:	alsa-lib-devel >= 0.9.0
+BuildRequires:	jack-audio-connection-kit-devel >= 0.99.0
+BuildRequires:	lash-devel >= 0.5.4
+BuildRequires:	perl
+BuildRequires:	autoconf
+BuildRequires:	automake
+
+Requires:	glibc >= 2.3.0
+Requires:	glib2 >= 2.12.0
+Requires:	alsa-lib >= 0.9.0
+Requires:	jack-audio-connection-kit >= 0.99.0
+Requires:	lash >= 0.5.4
+
+
+%description
+JAMRouter is a timing accurate bidirectional router that
+provides JACK MIDI ports for an ALSA Raw MIDI device.
+
+
+%prep
+%setup -q -n %{name}-%{gitversion}
+
+
+%build
+echo _arch=%{_arch} _target_cpu=%{_target_cpu} _build_arch=%{_build_arch}
+aclocal && autoconf && automake && autoheader
+CFLAGS="$RPM_OPT_FLAGS" %configure \
+	%{?build_32bit:--enable-32bit} \
+	--prefix=%{_prefix} \
+	--enable-arch=%{_target_cpu} \
+	--without-lash
+
+%{__make} %{?_smp_mflags}
+
+
+%install
+%{__rm} -rf $RPM_BUILD_ROOT
+%{__make} install DESTDIR=$RPM_BUILD_ROOT
+
+
+
+%clean
+%{__rm} -rf $RPM_BUILD_ROOT
+
+
+%files
+%defattr(-,root,root,-)
+%doc README INSTALL LICENSE AUTHORS GPL-3.0.txt ChangeLog TODO doc/juno-106.txt doc/midi-clock.txt doc/latency-tests
+%{_bindir}/jamrouter
+
+
+%changelog
+* Thu Mar 26 2015  William Weston <william.h.weston@gmail.com> - 0.2.0
+- Updated included docs for 0.2.0.
+
+* Thu Feb 26 2015  William Weston <william.h.weston@gmail.com> - 0.0.6
+- Added juno-106.txt to docs.
+
+* Sat Feb 14 2015  William Weston <william.h.weston@gmail.com> - 0.0.1
+- Initial RPM spec file.

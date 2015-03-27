@@ -1,0 +1,34 @@
+JAMRouter:  JACK <--> ALSA MIDI Router
+
+Changelog:
+
+2015-03-22 William Weston <william.h.weston@gmail.com> - jamrouter-0.2
+
+	MIDI Transport Changes since PHASEX-0.14.97:
+
+	* Removed and/or renamed all PHASEX specific code.
+	* Added ALSA Sequencer MIDI Tx support.
+	* Added Raw MIDI (ALSA, Generic, OSS) Tx support.
+	* Added JACK MIDI Tx support.
+	* Fixed polling code for Raw MIDI Rx drivers.
+	* Overhauled internal MIDI queuing code.
+	* Overhauled thread synchronization using new sync_info[] ringbuffer.
+	* Overhauled timing system to make better use of sync_info[].
+	* Fine-tuned clock for better settling times and accuracy.
+	* Simplified and improved internal clock start procedures.
+	* Implemented JACK latency calculation for JAMRouter's JACK MIDI ports.
+	* Added samplerate and bufsize dependent default latency calculation.
+	* Enabled support for MIDI system messages (not needed for PHASEX).
+	* Added complete Juno-106 SysEx <--> Controller translation.
+	* Implemented thorough note-on-off-all-notes-off type translations.
+	* Added active-sensing mode for configurable active-sensing behaviour.
+	* Added complete (Rx and Tx) Running-Status support.
+	* Added nonstandard SysEx terminator support for pre- MIDI-1.0 gear.
+	* Added various key/controller/pitchbender translations.
+	* Added Tx byte and event guard time bandwidth regulation options.
+	* Added MIDI latency/jitter benchmarking scripts.
+	* Fine-tuned MIDI timing code for verifiable near-sample-accuracy.
+	* Added signal handler for clean/xrun-free shutdown.
+	* Added start-in-terminal support for JACK session loads.
+	* Implemented session management command line override.
+	* Updated autoconf build system and scripts.

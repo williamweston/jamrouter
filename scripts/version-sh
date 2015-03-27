@@ -1,0 +1,11 @@
+#!/bin/sh
+
+umask 133
+version_string=`git describe --tags`;
+if [ -n "${version_string}" ]; then
+	echo "${version_string}" > jamrouter-version
+else
+	version_string=`cat jamrouter-version`
+fi
+perl -pi -e "s/^JAMRouter-.*:$/JAMRouter-${version_string}:/g" README
+echo "${version_string}"
