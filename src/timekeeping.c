@@ -989,10 +989,14 @@ set_midi_cycle_time(unsigned short period, int nframes)
 			       (sync_info[next_period].nsec_per_frame *
 			        (sync_info[next_period].f_buffer_period_size -
 			         midi_phase_lock))));
-		/* Nudge nsec_per_period in the right direction to speed up clock
-		   settling time. */
-		sync_info[next_period].nsec_per_period -=
-			((timecalc_t)(0.015625) * sync_info[next_period].nsec_per_frame);
+		/* Reset nsec_per_frame and nsec_per_period for quick clock resettling
+		   times after xruns or other events that throw off the audio process
+		   thread's scheduling. */
+		sync_info[next_period].nsec_per_frame =
+			(timecalc_t)(1000000000.0) / sync_info[period].f_sample_rate;
+		sync_info[next_period].nsec_per_period =
+			sync_info[period].f_buffer_period_size * (timecalc_t)(1000000000.0) /
+			sync_info[period].f_sample_rate;
 		JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
 		                DEBUG_COLOR_YELLOW "|||%d|||--- " DEBUG_COLOR_DEFAULT,
 		                sync_info[period].jack_wakeup_frame);
@@ -1033,10 +1037,14 @@ set_midi_cycle_time(unsigned short period, int nframes)
 			(int)(delta_nsec - (sync_info[next_period].nsec_per_frame * 0.5 *
 			                    (sync_info[next_period].f_buffer_period_size -
 			                     1.0 + midi_phase_max)));
-		/* Nudge nsec_per_period in the right direction to speed up clock
-		   settling time. */
-		sync_info[next_period].nsec_per_period +=
-			((timecalc_t)(0.015625) * sync_info[next_period].nsec_per_frame);
+		/* Reset nsec_per_frame and nsec_per_period for quick clock resettling
+		   times after xruns or other events that throw off the audio process
+		   thread's scheduling. */
+		sync_info[next_period].nsec_per_frame =
+			(timecalc_t)(1000000000.0) / sync_info[period].f_sample_rate;
+		sync_info[next_period].nsec_per_period =
+			sync_info[period].f_buffer_period_size * (timecalc_t)(1000000000.0) /
+			sync_info[period].f_sample_rate;
 		JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
 		                DEBUG_COLOR_YELLOW "+++|||%d||| " DEBUG_COLOR_DEFAULT,
 		                sync_info[period].jack_wakeup_frame);
