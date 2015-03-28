@@ -169,10 +169,7 @@ alsa_seq_get_port_list(ALSA_SEQ_INFO    *seq_info,
 		snd_seq_port_info_set_client(pinfo, client);
 		snd_seq_port_info_set_port(pinfo, -1);
 		while (snd_seq_query_next_port(seq_info->seq, pinfo) >= 0) {
-			if (!((type = snd_seq_port_info_get_type(pinfo)) &
-			      SND_SEQ_PORT_TYPE_MIDI_GENERIC)) {
-				continue;
-			}
+			type = snd_seq_port_info_get_type(pinfo);
 			if ((snd_seq_port_info_get_capability(pinfo) & caps) != caps) {
 				continue;
 			}
