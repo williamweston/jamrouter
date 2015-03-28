@@ -579,7 +579,7 @@ scan_midi(void)
 	/* open the sequencer */
 	if (snd_seq_open(& (alsa_seq_info->seq), "default",
 	                 SND_SEQ_OPEN_INPUT | SND_SEQ_OPEN_OUTPUT, SND_SEQ_NONBLOCK) < 0) {
-		printf("Unable to open ALSA sequencer.\n");
+		printf("Unable to open ALSA Sequencer.\n");
 		return;
 	}
 
@@ -588,11 +588,11 @@ scan_midi(void)
 	     alsa_seq_get_port_list(alsa_seq_info,
 	                            (SND_SEQ_PORT_CAP_READ | SND_SEQ_PORT_CAP_SUBS_READ),
 	                            alsa_seq_info->capture_ports)) == NULL) {
-		printf("Unable to get ALSA sequencer port list.\n");
+		printf("Unable to get ALSA Sequencer Capture port list.\n");
 	}
 	seq_port_list = alsa_seq_info->capture_ports;
 	if (seq_port_list != NULL) {
-		printf("\nFound ALSA sequencer capture ports:\n");
+		printf("\nFound ALSA Sequencer Capture ports:\n");
 	}
 	while (seq_port_list != NULL) {
 		printf("    %s\t%s: %s\n",
@@ -608,11 +608,11 @@ scan_midi(void)
 	     alsa_seq_get_port_list(alsa_seq_info,
 	                            (SND_SEQ_PORT_CAP_WRITE | SND_SEQ_PORT_CAP_SUBS_WRITE),
 	                            alsa_seq_info->playback_ports)) == NULL) {
-		printf("Unable to get ALSA sequencer playback port list.\n");
+		printf("Unable to get ALSA Sequencer Playback port list.\n");
 	}
 	seq_port_list = alsa_seq_info->playback_ports;
 	if (seq_port_list != NULL) {
-		printf("\nFound ALSA sequencer playback ports:\n");
+		printf("\nFound ALSA Sequencer Playback ports:\n");
 	}
 	while (seq_port_list != NULL) {
 		printf("    %s\t%s: %s\n",
@@ -674,7 +674,7 @@ scan_midi(void)
 		jack_midi_input_ports = jack_get_midi_port_list(JackPortIsOutput);
 	}
 	if ((jack_midi_input_ports != NULL)) {
-		printf("\nFound JACK MIDI Input Ports:\n");
+		printf("\nFound JACK MIDI Capture Ports:\n");
 		cur = jack_midi_input_ports;
 		while (cur != NULL) {
 			printf("    %s\n", cur->name);
@@ -687,7 +687,7 @@ scan_midi(void)
 		jack_midi_output_ports = jack_get_midi_port_list(JackPortIsInput);
 	}
 	if ((jack_midi_output_ports != NULL)) {
-		printf("\nFound JACK MIDI Output Ports:\n");
+		printf("\nFound JACK MIDI Playback Ports:\n");
 		cur = jack_midi_output_ports;
 		while (cur != NULL) {
 			printf("    %s\n", cur->name);
