@@ -720,7 +720,7 @@ jack_session_handler(jack_session_event_t *event, void *UNUSED(arg))
 	char                    cmd[256];
 	size_t                  len;
 
-	len = strlen(jamrouter_cmdline);
+	len = strlen(jamrouter_full_cmdline);
 
 	if (jamrouter_full_cmdline[len - 1] == '"') {
 		jamrouter_full_cmdline[len - 1] = '\0';
