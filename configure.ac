@@ -132,6 +132,9 @@ AC_CHECK_LIB(jack, jack_set_session_callback,
 AC_CHECK_LIB(jack, jack_set_latency_callback,
   [AC_DEFINE_UNQUOTED(HAVE_JACK_SET_LATENCY_CALLBACK, [1],
   [libjack has jack_set_latency_callback().])])
+AC_CHECK_LIB(jack, jack_get_cycle_times,
+  [AC_DEFINE_UNQUOTED(HAVE_JACK_GET_CYCLE_TIMES, [1],
+  [libjack has jack_get_cycle_times().])])
 
 # LASH
 AC_ARG_WITH(lash,

@@ -48,9 +48,10 @@ DEBUG_CLASS         debug_class_list[16] = {
 	{ DEBUG_CLASS_MIDI_NOTE,      "note" },
 	{ DEBUG_CLASS_MIDI_EVENT,     "event" },
 	{ DEBUG_CLASS_SESSION,        "session" },
-	{ DEBUG_CLASS_FULL,           "full" },
-	{ DEBUG_CLASS_TESTING,        "testing" },
 	{ DEBUG_CLASS_OSS,            "oss" },
+	{ DEBUG_CLASS_TESTING,        "testing" },
+	{ DEBUG_CLASS_ANALYZE,        "analyze" },
+	{ DEBUG_CLASS_FULL,           "full" },
 	{ (~0UL),                     NULL }
 };
 

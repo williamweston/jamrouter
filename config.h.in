@@ -48,6 +48,9 @@
 /* Define to 1 if you have the `isupper' function. */
 #undef HAVE_ISUPPER
 
+/* libjack has jack_get_cycle_times(). */
+#undef HAVE_JACK_GET_CYCLE_TIMES
+
 /* Define to 1 if you have the <jack/session.h> header file. */
 #undef HAVE_JACK_SESSION_H
 

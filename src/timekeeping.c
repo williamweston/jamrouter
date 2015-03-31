@@ -31,6 +31,9 @@
 #endif
 #include <asoundlib.h>
 #include <glib.h>
+#ifdef HAVE_JACK_GET_CYCLE_TIMES
+#include <jack.h>
+#endif
 #include "jamrouter.h"
 #include "timekeeping.h"
 #include "mididefs.h"
@@ -817,6 +820,14 @@ set_midi_cycle_time(unsigned short period, int nframes)
 	timecalc_t              avg_period_nsec;
 	unsigned short          last_period;
 	unsigned short          next_period;
+#ifdef HAVE_JACK_GET_CYCLE_TIMES
+	/* these values are provided by jack_get_cycle_times() */
+	jack_nframes_t          current_frames;
+	jack_time_t             current_usecs;
+	jack_time_t             next_usecs;
+	float                   period_usecs;
+#endif
+	jack_nframes_t          cycle_elapsed   = 0;
 
 	last_period = period;
 	next_period = (unsigned short)(period + 1) &
@@ -826,6 +837,22 @@ set_midi_cycle_time(unsigned short period, int nframes)
 	last.tv_nsec = (int)jack_start_time.tv_nsec;
 
 	clock_gettime(system_clockid, &jack_start_time);
+
+#ifdef HAVE_JACK_GET_CYCLE_TIMES
+	if (jack_get_cycle_times(jack_audio_client,
+	                         &current_frames, &current_usecs,
+	                         &next_usecs, &period_usecs) == 0) {
+		sync_info[next_period].jack_frames = current_frames;
+		cycle_elapsed = jack_frames_since_cycle_start(jack_audio_client);
+		time_sub_nsecs(&jack_start_time,
+		               (int)((timecalc_t)(cycle_elapsed) *
+		                     sync_info[period].nsec_per_period));
+	}
+	else {
+		JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
+		                DEBUG_COLOR_RED "!" DEBUG_COLOR_DEFAULT);
+	}
+#endif
 
 	/* For next period, start with current period's sync_info[] */
 	sync_info[next_period].f_buffer_period_size =
@@ -977,6 +1004,21 @@ set_midi_cycle_time(unsigned short period, int nframes)
 	sync_info[period].jack_wakeup_frame =
 		(signed short)(delta_nsec / sync_info[period].nsec_per_frame);
 
+#ifdef ENABLE_DEBUG
+	//JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
+	//                DEBUG_COLOR_LTBLUE "{%d:%d:%d:%f} "
+	//                DEBUG_COLOR_DEFAULT,
+	//                current_frames - sync_info[period].jack_frames,
+	//                current_usecs, next_usecs, period_usecs);
+	if ( (current_frames - sync_info[period].jack_frames) !=
+	     sync_info[period].buffer_period_size) {
+		JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
+		                DEBUG_COLOR_RED "{%d} "
+		                DEBUG_COLOR_DEFAULT,
+		                current_frames - sync_info[period].jack_frames);
+	}
+#endif
+
 	/* Latch the clock when audio wakes up before the calculated midi period
 	   start. coming in one frame too early is unfortunately common with
 	   non-rt kernels or missing realtime priveleges.  allow for an extra
@@ -998,8 +1040,8 @@ set_midi_cycle_time(unsigned short period, int nframes)
 			sync_info[period].f_buffer_period_size * (timecalc_t)(1000000000.0) /
 			sync_info[period].f_sample_rate;
 		JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
-		                DEBUG_COLOR_YELLOW "|||%d|||--- " DEBUG_COLOR_DEFAULT,
-		                sync_info[period].jack_wakeup_frame);
+		                DEBUG_COLOR_YELLOW "|||%d%+d|||--- " DEBUG_COLOR_DEFAULT,
+		                sync_info[period].jack_wakeup_frame, cycle_elapsed);
 	}
 	/* Half frame jitter correction for audio waking up too early, but within
 	   the current midi period. */
@@ -1008,16 +1050,16 @@ set_midi_cycle_time(unsigned short period, int nframes)
 		next_timeref.tv_nsec -=
 			((int)(sync_info[next_period].nsec_per_frame * 0.5));
 		JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
-		                DEBUG_COLOR_CYAN "<<" DEBUG_COLOR_BLUE "%d"
-		                DEBUG_COLOR_CYAN "<< " DEBUG_COLOR_DEFAULT,
-		                sync_info[period].jack_wakeup_frame);
+		                DEBUG_COLOR_LTBLUE "<<" DEBUG_COLOR_BLUE "%d%+d"
+		                DEBUG_COLOR_LTBLUE "<< " DEBUG_COLOR_DEFAULT,
+		                sync_info[period].jack_wakeup_frame, cycle_elapsed);
 	}
 	/* This condition is reached when the phase is locked. */
 	else if (delta_nsec <
 	         (sync_info[period].nsec_per_frame * midi_phase_max)) {
 		JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
-		                DEBUG_COLOR_BLUE "%d " DEBUG_COLOR_DEFAULT,
-		                sync_info[period].jack_wakeup_frame);
+		                DEBUG_COLOR_BLUE "%d%+d " DEBUG_COLOR_DEFAULT,
+		                sync_info[period].jack_wakeup_frame, cycle_elapsed);
 	}
 	/* Half frame jitter correction for audio waking up too late, but within
 	   the current midi period. */
@@ -1027,9 +1069,9 @@ set_midi_cycle_time(unsigned short period, int nframes)
 		next_timeref.tv_nsec +=
 			((int)(sync_info[next_period].nsec_per_frame * 0.5));
 		JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
-		                DEBUG_COLOR_CYAN ">>" DEBUG_COLOR_BLUE "%d"
-		                DEBUG_COLOR_CYAN ">> " DEBUG_COLOR_DEFAULT,
-		                sync_info[period].jack_wakeup_frame);
+		                DEBUG_COLOR_LTBLUE ">>" DEBUG_COLOR_BLUE "%d%+d"
+		                DEBUG_COLOR_LTBLUE ">> " DEBUG_COLOR_DEFAULT,
+		                sync_info[period].jack_wakeup_frame, cycle_elapsed);
 	}
 	/* Latch the clock when audio wakes up after the calculated period end. */
 	else {
@@ -1046,8 +1088,8 @@ set_midi_cycle_time(unsigned short period, int nframes)
 			sync_info[period].f_buffer_period_size * (timecalc_t)(1000000000.0) /
 			sync_info[period].f_sample_rate;
 		JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
-		                DEBUG_COLOR_YELLOW "+++|||%d||| " DEBUG_COLOR_DEFAULT,
-		                sync_info[period].jack_wakeup_frame);
+		                DEBUG_COLOR_YELLOW "+++|||%d%+d||| " DEBUG_COLOR_DEFAULT,
+		                sync_info[period].jack_wakeup_frame, cycle_elapsed);
 	}
 
 	/* Advance the timeref by one period for start of the next. */

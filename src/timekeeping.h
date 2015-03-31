@@ -25,6 +25,9 @@
 
 #include <time.h>
 #include <glib.h>
+#ifdef HAVE_JACK_GET_CYCLE_TIMES
+#include <jack.h>
+#endif
 #include "jamrouter.h"
 
 
@@ -92,6 +95,9 @@ typedef struct sync_info {
 	TIMESTAMP        start_time;
 	TIMESTAMP        end_time;
 	TIMESTAMP        sensing_timeout[MAX_MIDI_QUEUES];
+#ifdef HAVE_JACK_GET_CYCLE_TIMES
+	jack_nframes_t   jack_frames;
+#endif
 } SYNC_INFO;
 
 
