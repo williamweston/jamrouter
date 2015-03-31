@@ -777,7 +777,7 @@ rawmidi_read(RAWMIDI_INFO *rawmidi, unsigned char *buf, int len)
 		if (buf_available > 0) {
 			while ((buf_index < buf_available) && (output_index < len)) {
 				JAMROUTER_DEBUG(DEBUG_CLASS_STREAM,
-				                DEBUG_COLOR_LTBLUE "%02X "
+				                DEBUG_COLOR_CYAN "%02X "
 				                DEBUG_COLOR_DEFAULT,
 				                read_buf[buf_index]);
 				buf[output_index++] = read_buf[buf_index++];
@@ -852,7 +852,7 @@ rawmidi_read(RAWMIDI_INFO *rawmidi, unsigned char *buf, int len)
 					buf_available = bytes_read;
 					while ((buf_index < bytes_read) && (output_index < len)) {
 						JAMROUTER_DEBUG(DEBUG_CLASS_STREAM,
-						                DEBUG_COLOR_LTBLUE "%02X "
+						                DEBUG_COLOR_CYAN "%02X "
 						                DEBUG_COLOR_DEFAULT,
 						                read_buf[buf_index]);
 						buf[output_index++] = read_buf[buf_index++];
@@ -880,7 +880,7 @@ rawmidi_read(RAWMIDI_INFO *rawmidi, unsigned char *buf, int len)
 		if (buf_available > 0) {
 			while ((buf_index < buf_available) && (output_index < len)) {
 				JAMROUTER_DEBUG(DEBUG_CLASS_STREAM,
-				                DEBUG_COLOR_LTBLUE "%02X "
+				                DEBUG_COLOR_CYAN "%02X "
 				                DEBUG_COLOR_DEFAULT,
 				                read_buf[buf_index]);
 				buf[output_index++] = read_buf[buf_index++];
@@ -900,7 +900,7 @@ rawmidi_read(RAWMIDI_INFO *rawmidi, unsigned char *buf, int len)
 				buf_index = 0;
 				while ((buf_index < buf_available) && (output_index < len)) {
 					JAMROUTER_DEBUG(DEBUG_CLASS_STREAM,
-					                DEBUG_COLOR_LTBLUE "%02X "
+					                DEBUG_COLOR_CYAN "%02X "
 					                DEBUG_COLOR_DEFAULT,
 					                read_buf[buf_index]);
 					buf[output_index++] = read_buf[buf_index++];
@@ -927,7 +927,7 @@ rawmidi_read(RAWMIDI_INFO *rawmidi, unsigned char *buf, int len)
 				}
 				else {
 					JAMROUTER_DEBUG(DEBUG_CLASS_STREAM,
-					                DEBUG_COLOR_LTBLUE "%02X "
+					                DEBUG_COLOR_CYAN "%02X "
 					                DEBUG_COLOR_DEFAULT,
 					                buf[bytes_read]);
 					bytes_read++;
@@ -953,7 +953,7 @@ rawmidi_read(RAWMIDI_INFO *rawmidi, unsigned char *buf, int len)
 			{
 				if (read(rawmidi->rx_fd, &buf[bytes_read], 1) == 1) {
 					JAMROUTER_DEBUG(DEBUG_CLASS_STREAM,
-					                DEBUG_COLOR_LTBLUE "%02X "
+					                DEBUG_COLOR_CYAN "%02X "
 					                DEBUG_COLOR_DEFAULT,
 					                buf[bytes_read]);
 					bytes_read++;
@@ -971,7 +971,7 @@ rawmidi_read(RAWMIDI_INFO *rawmidi, unsigned char *buf, int len)
 			    ) {
 				if (read(rawmidi->rx_fd, &buf[bytes_read], 1) == 1) {
 					JAMROUTER_DEBUG(DEBUG_CLASS_STREAM,
-					                DEBUG_COLOR_LTBLUE "%02X "
+					                DEBUG_COLOR_CYAN "%02X "
 					                DEBUG_COLOR_DEFAULT,
 					                buf[bytes_read]);
 					bytes_read++;
@@ -1734,7 +1734,7 @@ raw_midi_rx_thread(void *UNUSED(arg))
 				}
 
 				JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
-				                DEBUG_COLOR_LTBLUE "[%d-%d:%d] "
+				                DEBUG_COLOR_CYAN "[%d-%d:%d] "
 				                DEBUG_COLOR_DEFAULT,
 				                first_byte_frame, last_byte_frame,
 				                event_frame_span);
