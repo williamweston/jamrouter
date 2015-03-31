@@ -1069,6 +1069,12 @@ jack_watchdog_cycle(void)
 	int             save_and_quit = 0;
 	int             j             = 0;
 
+	if ((jack_audio_client == NULL) || !jack_running || (jack_thread_p == 0)) {
+		jack_running = 0;
+		jack_audio_stopped = 1;
+		JAMROUTER_DEBUG(DEBUG_CLASS_DRIVER | DEBUG_CLASS_INIT,
+		                "JACK Watchdog:  JACK quit running.\n");
+	}
 #ifdef HAVE_JACK_SESSION_H
 	if (jack_session_event != NULL) {
 		switch(jack_session_event->type) {
