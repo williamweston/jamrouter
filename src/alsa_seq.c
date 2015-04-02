@@ -1118,11 +1118,11 @@ alsa_seq_rx_thread(void *UNUSED(arg))
 					if (debug) {
 						for (j = 0; j < event->bytes; j++) {
 							JAMROUTER_DEBUG(DEBUG_CLASS_STREAM,
-							                DEBUG_COLOR_LTBLUE "%02X " DEBUG_COLOR_DEFAULT,
+							                DEBUG_COLOR_CYAN "%02X " DEBUG_COLOR_DEFAULT,
 							                buffer[j]);
 						}
 						JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
-						                DEBUG_COLOR_LTBLUE "[%d] " DEBUG_COLOR_DEFAULT,
+						                DEBUG_COLOR_CYAN "[%d] " DEBUG_COLOR_DEFAULT,
 						                cycle_frame);
 					}
 				}
