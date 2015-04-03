@@ -1572,14 +1572,14 @@ raw_midi_rx_thread(void *UNUSED(arg))
 
 			period           = get_midi_period(&now);
 #ifdef HAVE_JACK_GET_CYCLE_TIMES
-			last_period      =
+			last_period      = (unsigned short)
 				(period + sync_info[period].period_mask) &
 				sync_info[period].period_mask;
-			jack_frame       =
+			jack_frame       = (jack_nframes_t)
 				((int)(jack_frame_time(jack_audio_client)
 				  - (unsigned int)(sync_info[last_period].jack_frames))
 				  - (int)(sync_info[last_period].buffer_period_size)
-				  - (int)(midi_phase_lock) - 5);
+				 - (int)(midi_phase_lock) - (int)(5));
 #endif
 			first_byte_frame = get_midi_frame(&period, &now,
 			                                  FRAME_FIX_LOWER | FRAME_LIMIT_UPPER);
