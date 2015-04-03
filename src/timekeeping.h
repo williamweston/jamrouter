@@ -81,6 +81,7 @@ typedef struct sync_info {
 	unsigned short   buffer_size_mask;
 	unsigned short   buffer_periods;
 	unsigned short   buffer_period_size;
+	unsigned short   buffer_period_mask;
 	unsigned short   period_mask;
 	unsigned short   rx_latency_periods;
 	unsigned short   tx_latency_periods;
@@ -98,6 +99,7 @@ typedef struct sync_info {
 #ifdef HAVE_JACK_GET_CYCLE_TIMES
 	jack_nframes_t   jack_frames;
 #endif
+	short            frames_per_byte;
 } SYNC_INFO;
 
 

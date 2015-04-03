@@ -598,7 +598,6 @@ set_jack_latency(jack_latency_callback_mode_t mode)
 	jack_latency_range_t    range;
 	jack_nframes_t          min_adj;
 	jack_nframes_t          max_adj;
-	jack_nframes_t          byte_frame_len;
 	jack_nframes_t          max_jitter;
 	unsigned short          period;
 
@@ -606,68 +605,65 @@ set_jack_latency(jack_latency_callback_mode_t mode)
 	range.max = 0;
 
 	period = get_midi_period(&now);
+
+	/* The jitter values used in latency range calculation are conservative
+	   values for decent UART / MPU-401 type interfaces. */
 	switch (sync_info[period].sample_rate) {
 	case 22050:
-		byte_frame_len = 8;
 		max_jitter = 4;
 		break;
 	case 32000:
-		byte_frame_len = 10;
 		max_jitter = 5;
 		break;
 	case 44100:
 	case 48000:
-		byte_frame_len = 15;
 		max_jitter = 6;
 		break;
 	case 64000:
-		byte_frame_len = 20;
 		max_jitter = 8;
 		break;
 	case 88200:
 	case 96000:
-		byte_frame_len = 30;
 		max_jitter = 12;
 		break;
 	case 176400:
 	case 192000:
-		byte_frame_len = 60;
 		max_jitter = 24;
 		break;
 	case 384000:
-		byte_frame_len = 120;
 		max_jitter = 28;
 		break;
 	default:
-		byte_frame_len = sync_info[period].sample_rate * 10 / 31250;
-		max_jitter     = sync_info[period].sample_rate / 8000;
+		max_jitter = sync_info[period].sample_rate / 8000;
 	}
 
 	switch (mode) {
 	case JackPlaybackLatency:
 		min_adj = (jack_nframes_t)((int)(sync_info[period].tx_latency_size +
 		                                 sync_info[period].buffer_period_size -
-		                                 (unsigned short)(midi_phase_lock)));
+		                                 (unsigned short)(midi_phase_lock) - 1));
 		max_adj = min_adj + max_jitter;
 		range.min += min_adj;
 		range.max += max_adj;
 		jack_port_set_latency_range(midi_input_port,
 		                            JackPlaybackLatency, &range);
 		JAMROUTER_DEBUG(DEBUG_CLASS_DRIVER,
-		                "JACK MIDI Input Latency:   min / max  =  %d / %d\n",
+		                "JACK MIDI Input --> MIDI Tx Latency:"
+		                "   min / max  =  %d / %d\n",
 		                range.min, range.max);
 		break;
 	case JackCaptureLatency:
-		min_adj = byte_frame_len +
+		min_adj = sync_info[period].frames_per_byte +
 			(jack_nframes_t)((int)(sync_info[period].rx_latency_size +
-			                       (unsigned short)(midi_phase_lock)));
+			(unsigned short)(midi_phase_lock)) - 1);
 		max_adj = min_adj + max_jitter;
 		range.min += min_adj;
 		range.max += max_adj;
 		jack_port_set_latency_range(midi_output_port,
-		                            JackCaptureLatency, &range);
+			JackCaptureLatency, &range);
 		JAMROUTER_DEBUG(DEBUG_CLASS_DRIVER,
-		                "JACK MIDI Output Latency:  min / max  =  %d / %d\n",
+		                "MIDI Rx --> JACK MIDI Output Latency:"
+		                "  min / max  =  %d / %d\n",
 		                range.min, range.max);
 		break;
 	}

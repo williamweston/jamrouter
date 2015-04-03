@@ -245,6 +245,7 @@ extern int             byte_guard_time_usec;
 extern int             event_guard_time_usec;
 extern int             rx_latency_periods;
 extern int             tx_latency_periods;
+extern int             jitter_correct_mode;
 #ifndef WITHOUT_JUNO
 extern int             translate_juno_sysex;
 extern int             echosysex;

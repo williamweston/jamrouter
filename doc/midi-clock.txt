@@ -174,8 +174,12 @@ simple cas operation on the queue index alone in this situation is not -rt
 safe, as observed in the debug queue currently in PHASEX.  While cas works
 nearly all of the time, cas alone does not guarantee atomicity.  This can be
 seen when two PHASEX threads obtain the same debug queue index and write to
-the same buffer.  No such race conditions have been observed under the current
-JAMRouter debug queue design.
+the same buffer.  JAMRouter's debug queue simply depends on an extra layer of
+atomic operations in an attempt to minimize the consequences of cas failure.
+While not technically multiple-writer safe, it performs close enough for
+debugging purposes.  The rare but inevitable cas failure observed with the
+debug queues can serve as an example of what not to do with realtime audio and
+MIDI queues.
 
 PHASEX also currently uses the same cas mechanism for atomically updating the
 midi_index and current period's timestamp.  This cas failure was clearly

@@ -52,9 +52,9 @@
 /* command line options */
 #define HAS_ARG     1
 #ifdef WITHOUT_JUNO
-# define NUM_OPTS    (35 + 1)
+# define NUM_OPTS    (36 + 1)
 #else
-# define NUM_OPTS    (37 + 1)
+# define NUM_OPTS    (38 + 1)
 #endif
 static struct option long_opts[] = {
 #ifndef WITHOUT_JUNO
@@ -71,6 +71,7 @@ static struct option long_opts[] = {
 	{ "event-guard-time",HAS_ARG, NULL, 'G' },
 	{ "input-port",      HAS_ARG, NULL, 'i' },
 	{ "output-port",     HAS_ARG, NULL, 'o' },
+	{ "jitter-correct",  0,       NULL, 'j' },
 	{ "keymap",          HAS_ARG, NULL, 'k' },
 	{ "pitchmap",        HAS_ARG, NULL, 'p' },
 	{ "pitchcontrol",    HAS_ARG, NULL, 'q' },
@@ -130,6 +131,7 @@ int             byte_guard_time_usec          = 0;
 int             event_guard_time_usec         = 0;
 int             rx_latency_periods            = 0;
 int             tx_latency_periods            = 0;
+int             jitter_correct_mode           = 0;
 #ifndef WITHOUT_JUNO
 int             translate_juno_sysex          = 0;
 int             echosysex                     = 0;
@@ -199,6 +201,7 @@ showusage(char *argvzero)
 	       " -o, --output-port=      JACK MIDI Output port name.\n"
 	       " -y, --rx-priority=      Realtime thread priority for MIDI Rx thread.\n"
 	       " -Y, --tx-priority=      Realtime thread priority for MIDI Tx thread.\n"
+	       " -j, --jitter-correct    Enable experimental Rx jitter correction mode.\n"
 	       " -z, --phase-lock=       JACK wakeup phase in MIDI Rx/Tx period (.06-.94).\n\n"
 	       "MIDI Message Translation Options:\n\n"
 	       " -A, --activesensing=    Active-Sensing mode:  on, thru, drop  (default on).\n"
@@ -597,6 +600,9 @@ main(int argc, char **argv)
 		case 'o':   /* JACK MIDI output port */
 			jack_output_port_name = strdup(optarg);
 			break;
+		case 'j':   /* Jitter correction mode */
+			jitter_correct_mode = 1;
+			break;
 		case 'z':   /* JACK wake phase within MIDI Rx/Tx period */
 			setting_midi_phase_lock = (timecalc_t)(atof(optarg));
 			if (setting_midi_phase_lock < (timecalc_t)(0.0625)) {
@@ -795,7 +801,8 @@ main(int argc, char **argv)
 	pthread_setname_np(pthread_self(), thread_name);
 	init_jack_audio();
 	while (sample_rate == 0) {
-		JAMROUTER_DEBUG(DEBUG_CLASS_INIT, "JACK did not set sample rate.  Re-initializing...\n");
+		JAMROUTER_DEBUG(DEBUG_CLASS_INIT,
+		                "JACK did not set sample rate.  Re-initializing...\n");
 		init_jack_audio();
 		usleep(125000);
 	}

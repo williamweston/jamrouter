@@ -52,6 +52,7 @@ timecalc_t              midi_phase_lock       = 0;
 timecalc_t              midi_phase_min        = 1.0;
 timecalc_t              midi_phase_max        = 127.0;
 timecalc_t              setting_midi_phase_lock = DEFAULT_MIDI_PHASE_LOCK;
+timecalc_t              decay_generations     = 2048.0;
 
 int                     max_event_latency     = 0;
 
@@ -342,7 +343,8 @@ set_midi_phase_lock(unsigned short period)
 
 	/* If not changed from the default, set phase lock to 0.75 at 1-period rx
 	   latency for 48000/64, 96000/128, 192000/256, etc. rather than enforcing
-	   a minimum of 2 rx latency periods for these settings. */
+	   a minimum of 2 rx latency periods for these settings.
+	   TODO:  Check to see if this is still necessary. */
 	if ( ((sync_info[period].sample_rate /
 	       sync_info[period].buffer_period_size) == 750) &&
 	     (sync_info[period].rx_latency_periods == 1) &&
@@ -357,8 +359,8 @@ set_midi_phase_lock(unsigned short period)
 	   wakes up late. */
 	if (sync_info[period].buffer_period_size == 16) {
 			midi_phase_lock  = (timecalc_t)(5.0);
-			midi_phase_min   = (timecalc_t)(2.0);
-			midi_phase_max   = (timecalc_t)(8.0);
+			midi_phase_min   = (timecalc_t)(1.5);
+			midi_phase_max   = (timecalc_t)(8.5);
 	}
 
 	/* For all other buffer sizes, keep the phase lock within 8 samples of
@@ -374,8 +376,8 @@ set_midi_phase_lock(unsigned short period)
 				sync_info[period].f_buffer_period_size - (timecalc_t)(9.0);
 		}
 
-		midi_phase_min  = midi_phase_lock - (timecalc_t)(3.0);
-		midi_phase_max  = midi_phase_lock + (timecalc_t)(3.0);
+		midi_phase_min  = midi_phase_lock - (timecalc_t)(4.0);
+		midi_phase_max  = midi_phase_lock + (timecalc_t)(4.0);
 	}
 }
 
@@ -461,9 +463,9 @@ get_midi_period(TIMESTAMP *now)
 	   no circumstances use invalid sync_info[] for the current period.  This
 	   memory fence assures us that the compiler and the CPU do not do the
 	   wrong thing here.  In the case where current sync_info[] is not
-	   fetched, a true CPU cache latency miss, extra logic is included below
-	   so that JAMRouter does not do the wrong thing when it comes to
-	   synchronization. */
+	   fetched, either a true CPU cache latency miss or the audio system
+	   skipping a cycle, extra logic is included below so that JAMRouter MIDI
+	   threads do not do the wrong thing when it comes to synchronization. */
 	asm volatile ("mfence; # read/write fence" : : : "memory");
 
 	for (period = 0; period < sync_info[0].buffer_periods; period++) {
@@ -493,7 +495,7 @@ get_midi_period(TIMESTAMP *now)
        recent sync_info in the ringbuffer.  In the case of buffer size changes
        and synchronization failure at the same time, the MIDI threads will
        pick up the change exactly one period (pre jack_bufsize reckoning)
-       late.  This should never be a concern during the middle of a
+       late.  This of course should never be a concern during the middle of a
        performance. */
 	delta.tv_sec  = now->tv_sec;
 	delta.tv_nsec = now->tv_nsec;
@@ -518,17 +520,18 @@ get_midi_period(TIMESTAMP *now)
  * Returns the frame number corresponding to the supplied period and
  * timestamp.  Processing flags are:
  *
+ * FRAME_TIMESTAMP:    Obtain a new timestamp, overwriting old.
  * FRAME_LIMIT_LOWER:  Enforce zero as the lower frame limit.
  * FRAME_LIMIT_UPPER:  Enforce buffer period size minus one as upper limit.
  * FRAME_FIX_LOWER:    Negative values are indicative of the sync_info[]
- *   ringbuffer not being updated for the current thread, most likely due
- *   to old values being stuck in the CPU cache.  This option detects
- *   stale sync_info[] and adjusts the period and frame accordingly.
- *   At most buffer_size/sample_rate combinations, this is either not
- *   possible or an extremely rare corner case.  At 16/96000, this extra
- *   logic becomes an absolute necessity for rock-solid timing.  In all
- *   cases, this logic has been observed to make the proper correction
- *   100% of the time.
+ *   ringbuffer not being updated for the current thread, most likely due to
+ *   the audio system skipping a cycle or old values being stuck in the CPU
+ *   cache.  This option detects stale sync_info[] and adjusts the period and
+ *   frame accordingly.  At most buffer_size/sample_rate combinations, this is
+ *   either not possible or an extremely rare corner case.  At 16/96000, this
+ *   extra logic becomes an absolute necessity for rock-solid timing.  In all
+ *   cases, this logic has been observed to make the proper correction 100% of
+ *   the time.
  *****************************************************************************/
 unsigned short
 get_midi_frame(unsigned short *period, TIMESTAMP *now, unsigned char flags)
@@ -704,6 +707,8 @@ set_new_period_size(unsigned short period, unsigned short nframes)
 		(unsigned short)(sync_info[period].buffer_periods - 1);
 	sync_info[period].buffer_period_size   = (unsigned short)(nframes);
 	sync_info[period].f_buffer_period_size = (timecalc_t)(nframes);
+	sync_info[period].buffer_period_mask   =
+		(unsigned short)(sync_info[period].buffer_period_size - 1);
 	sync_info[period].buffer_size          =
 		(unsigned short)(sync_info[period].buffer_period_size *
 		                 sync_info[period].buffer_periods);
@@ -746,6 +751,48 @@ set_new_period_size(unsigned short period, unsigned short nframes)
 
 	sync_info[period].nsec_per_frame =
 		sync_info[period].nsec_per_period /
+		sync_info[period].f_buffer_period_size;
+
+	/* set frames per byte for latency calculation and jitter correction. */
+	switch (sync_info[period].sample_rate) {
+	case 22050:
+		sync_info[period].frames_per_byte = 8;
+		break;
+	case 32000:
+		sync_info[period].frames_per_byte = 10;
+		break;
+	case 44100:
+		sync_info[period].frames_per_byte = 15;
+		break;
+	case 48000:
+		sync_info[period].frames_per_byte = 16;
+		break;
+	case 64000:
+		sync_info[period].frames_per_byte = 20;
+		break;
+	case 88200:
+	case 96000:
+		sync_info[period].frames_per_byte = 30;
+		break;
+	case 176400:
+	case 192000:
+		sync_info[period].frames_per_byte = 60;
+		break;
+	case 384000:
+		sync_info[period].frames_per_byte = 120;
+		break;
+	default:
+		sync_info[period].frames_per_byte = (short)
+			((sync_info[period].sample_rate * 10 ) / 31250);
+	}
+
+	/* Since the decayed average is integrated at higher frequencies with
+	   lower buffer sizes and higher sampling rates, compensate here for
+	   stability.  This is tunable in seconds and provides nearly the same
+	   drift vs. time characteristics at all buffer size and sample rate
+	   combinations. */
+	decay_generations = (timecalc_t)(360.0) *
+		sync_info[period].f_sample_rate /
 		sync_info[period].f_buffer_period_size;
 
 	/* calculate new midi phase lock for current buffer size. */
@@ -803,12 +850,12 @@ init_sync_info(unsigned int sample_rate, unsigned short period_size)
  * can be called at any time within the processing period.  Basically, this is
  * a fancy software PLL with the incoming clock pulse handled by one thread
  * while another thread checks to see when the stable output clock pulse
- * _would_ have fired, times its events, and updates its buffer index
- * accordingly.  Timing jitter of when this function is called is not a
- * problem as long as the average period time remains relatively stable.  We
- * just need to remember that in the absense of xruns, we assume that an audio
- * processing period is never actually late, just later than we expected.  It
- * can only be early (and always less than 1 full period early).
+ * _would_ have fired, times its events, etc.  Timing jitter of when this
+ * function is called is not a problem as long as the average period time
+ * remains relatively stable.  We just need to remember that in the absense of
+ * xruns, we assume that an audio processing period is never actually late,
+ * just later than we expected.  It can only be early (and always less than 1
+ * full period early).
  *****************************************************************************/
 unsigned short
 set_midi_cycle_time(unsigned short period, int nframes)
@@ -867,6 +914,8 @@ set_midi_cycle_time(unsigned short period, int nframes)
 		sync_info[period].buffer_size_mask;
 	sync_info[next_period].buffer_period_size   =
 		sync_info[period].buffer_period_size;
+	sync_info[next_period].buffer_period_mask   =
+		sync_info[period].buffer_period_mask;
 	sync_info[next_period].buffer_periods       =
 		sync_info[period].buffer_periods;
 	sync_info[next_period].period_mask          =
@@ -971,29 +1020,34 @@ set_midi_cycle_time(unsigned short period, int nframes)
 		                             &(sync_info[last_period].start_time));
 
 		avg_period_nsec   = sync_info[last_period].nsec_per_period;
-		avg_period_nsec  -= (avg_period_nsec / (timecalc_t)(2048.0));
+		avg_period_nsec  -=
+			(avg_period_nsec / decay_generations);
 
 		/* handle system clock wrapping around. */
 		if ((jack_start_time.tv_sec == 0) && (last.tv_sec != 0)) {
 			avg_period_nsec +=
-				((timecalc_t)((timecalc_t)(1000000000) +
+				((timecalc_t)((timecalc_t)(1000000000.0) +
 				              (timecalc_t)(jack_start_time.tv_nsec) -
 				              (timecalc_t)(last.tv_nsec)) /
-				 (timecalc_t)(2048.0));
+				 decay_generations);
 		}
 		else {
 			avg_period_nsec +=
 				((timecalc_t)((((timecalc_t)(jack_start_time.tv_sec) -
-				                (timecalc_t)(last.tv_sec)) * 1000000000) +
+				                (timecalc_t)(last.tv_sec)) * 1000000000.0) +
 				              ((timecalc_t)(jack_start_time.tv_nsec) -
 				               (timecalc_t)(last.tv_nsec))) /
-				 (timecalc_t)(2048.0));
+				 decay_generations);
 		}
 		sync_info[next_period].nsec_per_period = avg_period_nsec;
 		sync_info[next_period].nsec_per_frame  =
 			(sync_info[next_period].nsec_per_period /
 			 sync_info[next_period].f_buffer_period_size);
 
+		/* TODO:  Turn this into a higher order filter by adding either
+		   additional decayed average stages or integrators tuned at different
+		   time intervals, with the first stage only being the one that
+		   compensates for buffer period size and sample rate. */
 	}
 
 	timeref.tv_sec       = sync_info[last_period].start_time.tv_sec;
@@ -1012,8 +1066,8 @@ set_midi_cycle_time(unsigned short period, int nframes)
 	//                current_usecs, next_usecs, period_usecs);
 	if ( (current_frames - sync_info[period].jack_frames) !=
 	     sync_info[period].buffer_period_size) {
-		JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
-		                DEBUG_COLOR_RED "{%d} "
+		JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
+		                DEBUG_COLOR_RED "{%u} "
 		                DEBUG_COLOR_DEFAULT,
 		                current_frames - sync_info[period].jack_frames);
 	}
@@ -1024,8 +1078,8 @@ set_midi_cycle_time(unsigned short period, int nframes)
 	   non-rt kernels or missing realtime priveleges.  allow for an extra
 	   frame. */
 	if (delta_nsec < (sync_info[period].nsec_per_frame)) {
-		next_timeref.tv_sec   = (int) jack_start_time.tv_sec;
-		next_timeref.tv_nsec  = (int) jack_start_time.tv_nsec;
+		next_timeref.tv_sec   = (int)jack_start_time.tv_sec;
+		next_timeref.tv_nsec  = (int)jack_start_time.tv_nsec;
 		next_timeref.tv_nsec -=
 			((int)(sync_info[next_period].nsec_per_period -
 			       (sync_info[next_period].nsec_per_frame *
@@ -1043,12 +1097,14 @@ set_midi_cycle_time(unsigned short period, int nframes)
 		                DEBUG_COLOR_YELLOW "|||%d%+d|||--- " DEBUG_COLOR_DEFAULT,
 		                sync_info[period].jack_wakeup_frame, cycle_elapsed);
 	}
-	/* Half frame jitter correction for audio waking up too early, but within
-	   the current midi period. */
+	/* Phase locking lower bound: subtract a partial frame from the start of
+	   the next period (no more than 0.5 to maintian continuity). */
 	else if (delta_nsec <
 	         (sync_info[period].nsec_per_frame * midi_phase_min)) {
 		next_timeref.tv_nsec -=
-			((int)(sync_info[next_period].nsec_per_frame * 0.5));
+			((int)(sync_info[next_period].nsec_per_frame * 0.25));
+			//((int)(sync_info[next_period].nsec_per_period * 
+			//       (timecalc_t)(0.0001220703125)));
 		JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
 		                DEBUG_COLOR_LTBLUE "<<" DEBUG_COLOR_BLUE "%d%+d"
 		                DEBUG_COLOR_LTBLUE "<< " DEBUG_COLOR_DEFAULT,
@@ -1061,13 +1117,15 @@ set_midi_cycle_time(unsigned short period, int nframes)
 		                DEBUG_COLOR_BLUE "%d%+d " DEBUG_COLOR_DEFAULT,
 		                sync_info[period].jack_wakeup_frame, cycle_elapsed);
 	}
-	/* Half frame jitter correction for audio waking up too late, but within
-	   the current midi period. */
+	/* Phase locking upper bound: add a partial frame to the start of
+	   the next period (no more than 0.5 to maintian continuity). */
 	else if ( (delta_nsec < (sync_info[period].nsec_per_period)) &&
 	          (sync_info[period].jack_wakeup_frame <
 	           sync_info[period].f_buffer_period_size) ) {
 		next_timeref.tv_nsec +=
-			((int)(sync_info[next_period].nsec_per_frame * 0.5));
+			((int)(sync_info[next_period].nsec_per_frame * 0.25));
+			//((int)(sync_info[next_period].nsec_per_period * 
+			//       (timecalc_t)(0.0001220703125)));
 		JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
 		                DEBUG_COLOR_LTBLUE ">>" DEBUG_COLOR_BLUE "%d%+d"
 		                DEBUG_COLOR_LTBLUE ">> " DEBUG_COLOR_DEFAULT,
@@ -1075,10 +1133,13 @@ set_midi_cycle_time(unsigned short period, int nframes)
 	}
 	/* Latch the clock when audio wakes up after the calculated period end. */
 	else {
+		//next_timeref.tv_nsec +=
+		//	(int)(delta_nsec - (sync_info[next_period].nsec_per_frame * 0.5 *
+		//	                    (sync_info[next_period].f_buffer_period_size -
+		//	                     1.0 + midi_phase_max)));
 		next_timeref.tv_nsec +=
-			(int)(delta_nsec - (sync_info[next_period].nsec_per_frame * 0.5 *
-			                    (sync_info[next_period].f_buffer_period_size -
-			                     1.0 + midi_phase_max)));
+			(int)((sync_info[next_period].nsec_per_frame * 
+			       (sync_info[next_period].f_buffer_period_size - 1.0)));
 		/* Reset nsec_per_frame and nsec_per_period for quick clock resettling
 		   times after xruns or other events that throw off the audio process
 		   thread's scheduling. */
@@ -1115,6 +1176,9 @@ set_midi_cycle_time(unsigned short period, int nframes)
 	               (int)(sync_info[next_period].nsec_per_period));
 	sync_info[next_period].end_time.tv_sec  = next_timeref.tv_sec;
 	sync_info[next_period].end_time.tv_nsec = next_timeref.tv_nsec;
+
+	sync_info[next_period].jack_frames =
+		current_frames + sync_info[next_period].buffer_period_size;
 
 	/* return the next period index back to the caller */
 	next_period = (unsigned short)(period + 1) &

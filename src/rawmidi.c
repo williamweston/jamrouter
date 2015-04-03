@@ -26,6 +26,10 @@
 #include <ctype.h>
 #include <pthread.h>
 #include <asoundlib.h>
+#ifdef HAVE_JACK_GET_CYCLE_TIMES
+#include <jack.h>
+#include "jack.h"
+#endif
 #include "jamrouter.h"
 #include "timekeeping.h"
 #include "rawmidi.h"
@@ -1513,19 +1517,23 @@ raw_midi_rx_thread(void *UNUSED(arg))
 	struct sched_param  schedparam;
 	pthread_t           thread_id;
 	unsigned char       running_status;
-	unsigned short      event_frame_span    = 0;
+	short               delta_frames;
+	short               target_span;
+	short               event_frame_span    = 0;
 	unsigned short      first_byte_frame    = 0;
 	unsigned short      last_byte_frame     = 0;
 	unsigned short      rx_index            = 0;
 	unsigned short      period;
+	unsigned short      last_period;
 	unsigned short      last_byte_period;
 	unsigned char       type                = MIDI_EVENT_NO_EVENT;
 	unsigned char       channel             = 0x7F;
 	unsigned char       midi_byte;
 	unsigned char       j;
+#ifdef HAVE_JACK_GET_CYCLE_TIMES
+	jack_nframes_t      jack_frame;
+#endif
 
-	/* with a single reader queue, it is appropriate to ignore */
-	/* the declaration of volatile here with a typecast. */
 	out_event        = get_new_midi_event(A2J_QUEUE);
 	out_event->state = EVENT_STATE_ALLOCATED;
 
@@ -1563,6 +1571,16 @@ raw_midi_rx_thread(void *UNUSED(arg))
 		if (rawmidi_read(rawmidi_info, (unsigned char *) &midi_byte, 1) == 1) {
 
 			period           = get_midi_period(&now);
+#ifdef HAVE_JACK_GET_CYCLE_TIMES
+			last_period      =
+				(period + sync_info[period].period_mask) &
+				sync_info[period].period_mask;
+			jack_frame       =
+				((int)(jack_frame_time(jack_audio_client)
+				  - (unsigned int)(sync_info[last_period].jack_frames))
+				  - (int)(sync_info[last_period].buffer_period_size)
+				  - (int)(midi_phase_lock) - 5);
+#endif
 			first_byte_frame = get_midi_frame(&period, &now,
 			                                  FRAME_FIX_LOWER | FRAME_LIMIT_UPPER);
 			last_byte_frame  = first_byte_frame;
@@ -1692,25 +1710,80 @@ raw_midi_rx_thread(void *UNUSED(arg))
 				last_byte_period = get_midi_period(&now);
 				last_byte_frame  =
 					get_midi_frame(&last_byte_period, &now, FRAME_FIX_LOWER);
-				event_frame_span = (unsigned short)
-					( sync_info[period].buffer_size -
-					  (rx_index + first_byte_frame) +
-					  sync_info[last_byte_period].rx_index + last_byte_frame )
-					& sync_info[period].buffer_size_mask;
+				event_frame_span = (short)
+					( (unsigned short)( sync_info[period].buffer_size -
+					    (rx_index + first_byte_frame) +
+					    sync_info[last_byte_period].rx_index + last_byte_frame )
+					  & (unsigned short)(sync_info[period].buffer_size_mask) );
+
+				/* Jitter Correction:  When the timespan in frames of the
+				   current event is lower than the norm, this is consistently
+				   indicative of the sender delivering the first byte a little
+				   bit late.  When the event timespan in frames is longer than
+				   the norm, the same delta correction has also been seen to
+				   help in some cases, and has never been observed to increase
+				   the maximum jitter.  */
+				if (jitter_correct_mode > 0) {
+					delta_frames = 0;
+					if ((out_event->bytes > 1) && (out_event->bytes < 8)) {
+						target_span = (short)
+							((int)(out_event->bytes - 1) *
+							 (int)(sync_info[period].frames_per_byte));
+						delta_frames = (short)(event_frame_span - target_span);
+						if (delta_frames < 0) {
+							if (first_byte_frame < -delta_frames) {
+								first_byte_frame = (unsigned short)
+									(first_byte_frame + sync_info[period].buffer_period_size);
+								period = (unsigned short)
+									(period + sync_info[period].period_mask)
+									& sync_info[period].period_mask;
+							}
+							first_byte_frame = (unsigned short)(short)
+								((short)(first_byte_frame + event_frame_span) - target_span);
+							if (first_byte_frame >= sync_info[period].buffer_period_size) {
+								first_byte_frame =
+									first_byte_frame & sync_info[period].buffer_period_mask;
+								period = (unsigned short)
+									((period + 1) & sync_info[period].period_mask);
+							}
+							JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
+							                DEBUG_COLOR_RED "[%+d] " DEBUG_COLOR_DEFAULT,
+							                delta_frames);
+						}
+						else if ((delta_frames > 0) && (delta_frames < 5)) {
+							first_byte_frame = (unsigned short)(short)
+								((short)(first_byte_frame + event_frame_span) - target_span);
+							if (first_byte_frame >= sync_info[period].buffer_period_size) {
+								first_byte_frame = (unsigned short)
+									((short)(first_byte_frame) -
+									 (short)(sync_info[period].buffer_period_size));
+								period = (unsigned short)
+									((period + 1) & sync_info[period].period_mask);
+							}
+							JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
+							                DEBUG_COLOR_RED "[%+d] " DEBUG_COLOR_DEFAULT,
+							                delta_frames);
+						}
+						rx_index = sync_info[period].rx_index;
+					}
+				}
 
 				/* Check for events that exceed normal expectations for
 				   3-byte events.  With some interfaces, this can be common. */
-				if ( event_frame_span > (unsigned short)
+#ifdef EXTRA_DEBUG
+				if ( event_frame_span > (short)
 				     ( (short)sync_info[period].rx_latency_size -
 				       (short)(sync_info[period].buffer_period_size) +
 				       (short)midi_phase_min) ) {
-					JAMROUTER_DEBUG(DEBUG_CLASS_TESTING,
+					JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
 					                DEBUG_COLOR_RED "?? " DEBUG_COLOR_DEFAULT);
 				}
-				else if (event_frame_span > (sync_info[period].sample_rate / 1500)) {
-					JAMROUTER_DEBUG(DEBUG_CLASS_TESTING,
+				else if (event_frame_span >
+				         (short)(sync_info[period].sample_rate / 1500)) {
+					JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
 					                DEBUG_COLOR_RED "? " DEBUG_COLOR_DEFAULT);
 				}
+#endif
 #ifndef WITHOUT_JUNO
 				/* translate juno sysex to controllers */
 				translate_from_juno(period, A2J_QUEUE,
@@ -1735,9 +1808,16 @@ raw_midi_rx_thread(void *UNUSED(arg))
 
 				JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
 				                DEBUG_COLOR_CYAN "[%d-%d:%d] "
+#ifdef HAVE_JACK_GET_CYCLE_TIMES
+				                DEBUG_COLOR_MAGENTA "[%d] "
+#endif
 				                DEBUG_COLOR_DEFAULT,
 				                first_byte_frame, last_byte_frame,
-				                event_frame_span);
+				                event_frame_span
+#ifdef HAVE_JACK_GET_CYCLE_TIMES
+				                , jack_frame
+#endif
+				                );
 
 				out_event = get_new_midi_event(A2J_QUEUE);
 			}
