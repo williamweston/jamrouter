@@ -671,8 +671,8 @@ sleep_until_next_period(unsigned short period, TIMESTAMP *now)
 	//}
 
 	if (delta_frames > 0) {
-		sleep_time.tv_sec  = (time_t)((sync_info[next_period].jack_next_usecs / 1000000) + 0);
-		sleep_time.tv_nsec = (time_t)((sync_info[next_period].jack_next_usecs % 1000000) * 1000);
+		sleep_time.tv_sec  = (time_t)((sync_info[next_period].jack_next_usecs / 1000000UL) + 0);
+		sleep_time.tv_nsec = (time_t)((sync_info[next_period].jack_next_usecs % 1000000UL) * 1000UL);
 		nsec_this_period = ((unsigned int)(sync_info[next_period].jack_next_usecs) -
 		                    (unsigned int)(sync_info[next_period].jack_current_usecs));
 		//usecs = (int)((timecalc_t)(delta_frames + 16) * (timecalc_t)
