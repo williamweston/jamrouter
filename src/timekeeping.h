@@ -98,6 +98,8 @@ typedef struct sync_info {
 	TIMESTAMP        sensing_timeout[MAX_MIDI_QUEUES];
 #ifdef HAVE_JACK_GET_CYCLE_TIMES
 	jack_nframes_t   jack_frames;
+	jack_time_t      jack_current_usecs;
+	jack_time_t      jack_next_usecs;
 #endif
 	short            frames_per_byte;
 } SYNC_INFO;
@@ -143,6 +145,10 @@ unsigned short get_midi_period(TIMESTAMP *now);
 unsigned short get_midi_frame(unsigned short *period,
                               TIMESTAMP *now,
                               unsigned char flags);
+#ifdef HAVE_JACK_GET_CYCLE_TIMES
+void get_midi_frame_jack_dll(unsigned short *period,
+                             unsigned short *frame);
+#endif
 TIMESTAMP *get_frame_time(unsigned short period,
                           unsigned short frame,
                           TIMESTAMP *frame_time);

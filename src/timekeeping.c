@@ -267,77 +267,16 @@ jamrouter_nanosleep(long int nsecs)
 
 
 /*****************************************************************************
- * sleep_until_next_period()
- *
- * TODO:  Consider the use of select() to sleep for a maximum time instead
- *        a minimum time as with usleep() and clock_nanosleep().
- *****************************************************************************/
-unsigned short
-sleep_until_next_period(unsigned short period, TIMESTAMP *now)
-{
-	TIMESTAMP sleep_time;
-
-	if ( (clock_gettime(system_clockid, now) == 0) &&
-	     timecmp(now, &(sync_info[period].end_time), TIME_LT) ) {
-		sleep_time.tv_sec  = sync_info[period].end_time.tv_sec;
-		sleep_time.tv_nsec = sync_info[period].end_time.tv_nsec;
-		time_sub(&sleep_time, now);
-#ifdef HAVE_CLOCK_NANOSLEEP
-		clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
-#else
-		nanosleep(sleep_time);
-#endif
-	}
-
-	period++;
-	period &= sync_info[period].period_mask;
-
-	sync_info[period].jack_wakeup_frame = 0;
-
-	JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
-	                DEBUG_COLOR_GREEN "! " DEBUG_COLOR_DEFAULT);
-
-	/* When debug is disabled, a full memory fence is still needed here,
-	   as MIDI Tx is about to dequeue. */
-	asm volatile (" mfence; # read/write fence" : : : "memory");
-
-	return period;
-}
-
-
-/*****************************************************************************
- * sleep_until_frame()
- *
- * TODO:  Consider the use of select() to sleep for a maximum time instead
- *        a minimum time as with usleep() and clock_nanosleep().
- *****************************************************************************/
-void
-sleep_until_frame(unsigned short period, unsigned short frame)
-{
-	TIMESTAMP now;
-	TIMESTAMP frame_time;
-
-	frame_time.tv_sec  = sync_info[period].start_time.tv_sec;
-	frame_time.tv_nsec = sync_info[period].start_time.tv_nsec;
-
-	time_add_nsecs(&frame_time,
-	               (int)(sync_info[period].nsec_per_frame *
-	                     (timecalc_t)(frame)));
-
-	if ( (clock_gettime(system_clockid, &now) == 0) &&
-	     (timecmp(&now, &frame_time, TIME_LT) ) ) {
-		time_sub(&frame_time, &now);
-		clock_nanosleep(CLOCK_MONOTONIC, 0, &frame_time, NULL);
-	}
-}
-
-
-/*****************************************************************************
  * set_midi_phase_lock
  *****************************************************************************/
 void
 set_midi_phase_lock(unsigned short period)
 {
+#if 1
+	midi_phase_lock = 4.0;
+	midi_phase_min  = midi_phase_lock - (timecalc_t)(4.0);
+	midi_phase_max  = midi_phase_lock + (timecalc_t)(4.0);
+#else
 	midi_phase_lock = (timecalc_t)(setting_midi_phase_lock *
 	                               sync_info[period].f_buffer_period_size);
 
@@ -379,6 +318,7 @@ set_midi_phase_lock(unsigned short period)
 		midi_phase_min  = midi_phase_lock - (timecalc_t)(4.0);
 		midi_phase_max  = midi_phase_lock + (timecalc_t)(4.0);
 	}
+#endif
 }
 
 
@@ -439,6 +379,95 @@ start_midi_clock(void)
 	}
 
 }
+
+
+#ifdef HAVE_JACK_GET_CYCLE_TIMES
+/*****************************************************************************
+ * get_midi_period_jack_dll()
+ *****************************************************************************/
+unsigned short
+get_midi_period_jack_dll(jack_nframes_t current_frame)
+{
+	unsigned short     period;
+	unsigned short     elapsed_periods;
+	unsigned short     recent_period        = 0;
+	jack_nframes_t     recent_cycle_start   = 0;
+	jack_nframes_t     delta_frames;
+	
+	/* Any thread needing to know what period we are in right now should under
+	   no circumstances use invalid sync_info[] for the current period.  This
+	   memory fence assures us that the compiler and the CPU do not do the
+	   wrong thing here.  In the case where current sync_info[] is not
+	   fetched, either a true CPU cache latency miss or the audio system
+	   skipping a cycle, extra logic is included below so that JAMRouter MIDI
+	   threads do not do the wrong thing when it comes to synchronization. */
+	asm volatile ("mfence; # read/write fence" : : : "memory");
+
+	for (period = 0; period < sync_info[0].buffer_periods; period++) {
+		/* check jack framestamps */
+		if ( (current_frame >= sync_info[period].jack_frames) &&
+		     (current_frame < (sync_info[period].jack_frames +
+		                       sync_info[period].buffer_period_size)) ) {
+			return period;
+		}
+		/* keep track of most recent sync_info found. */
+		if (sync_info[period].jack_frames > recent_cycle_start) {
+			recent_cycle_start = sync_info[period].jack_frames;
+			recent_period = period;
+		}
+	}
+
+	/* Control reaches this point only before clock starts or when
+       sync_info[period] is found to be stale.  This extra logic only becomes
+       necessary when the number of periods in the sync_info[] ringbuffer is
+       pushed lower than 4, yet it remains as an extra safeguard against
+       against synchronization error, as the behavior of this logic has shown
+       itself to be 100% correct.  In the case of any sort of synchronization
+       error, timing information is dependably extrapolated from the most
+       recent sync_info in the ringbuffer.  In the case of buffer size changes
+       and synchronization failure at the same time, the MIDI threads will
+       pick up the change exactly one period (pre jack_bufsize reckoning)
+       late.  This of course should never be a concern during the middle of a
+       performance. */
+	delta_frames = current_frame - recent_cycle_start;
+	elapsed_periods =
+		(unsigned short)(delta_frames /
+		                 sync_info[recent_period].buffer_period_size);
+	period =
+		(unsigned short)((recent_period + elapsed_periods) &
+		                 sync_info[recent_period].period_mask);
+
+	JAMROUTER_DEBUG(DEBUG_CLASS_TESTING, DEBUG_COLOR_RED "}}%d{{ ", period);
+
+	return period;
+}
+
+
+/*****************************************************************************
+ * get_midi_frame_jack_dll()
+ *****************************************************************************/
+void
+get_midi_frame_jack_dll(unsigned short *period, unsigned short *frame)
+{
+	jack_nframes_t  jack_frame;
+
+	jack_frame = jack_frame_time(jack_audio_client);
+	*period = get_midi_period_jack_dll(jack_frame);
+
+	jack_frame = (unsigned int)
+		((jack_frame - (unsigned int)(sync_info[*period].jack_frames)) -
+		 (unsigned int)(sync_info[*period].buffer_period_size) -
+		 (unsigned int)(sync_info[*period].rx_latency_size) -
+		 (unsigned int)(0));
+
+	*frame = (unsigned short)
+		(jack_frame & sync_info[*period].buffer_period_mask);
+
+	//JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
+	//                DEBUG_COLOR_MAGENTA "[%u] " DEBUG_COLOR_DEFAULT,
+	//                *frame);
+}
+#endif /* HAVE_JACK_GET_CYCLE_TIMES */
 
 
 /*****************************************************************************
@@ -589,13 +618,174 @@ get_frame_time(unsigned short   period,
                unsigned short   frame,
                TIMESTAMP        *frame_time)
 {
+#ifdef HAVE_JACK_GET_CYCLE_TIMES
+	jack_time_t     jack_time;
+
+	jack_time = jack_frames_to_time(jack_audio_client, (jack_nframes_t)
+	                                (frame + sync_info[period].jack_frames));
+
+	frame_time->tv_sec  = (int)(jack_time / (jack_time_t)(1000000));
+	frame_time->tv_nsec = (int)(jack_time % (jack_time_t)(1000000)) * (int)(1000);
+#else /* !HAVE_JACK_GET_CYCLE_TIMES */
 	frame_time->tv_sec  = sync_info[period].start_time.tv_sec;
 	frame_time->tv_nsec = sync_info[period].start_time.tv_nsec;
 
 	time_add_nsecs(frame_time,
 	               (int)(sync_info[period].nsec_per_frame * (double)(frame)));
 
+#endif /* !HAVE_JACK_GET_CYCLE_TIMES */
 	return frame_time;
+}
+
+
+/*****************************************************************************
+ * sleep_until_next_period()
+ *
+ * TODO:  Consider the use of select() to sleep for a maximum time instead
+ *        a minimum time as with usleep() and clock_nanosleep().
+ *****************************************************************************/
+unsigned short
+sleep_until_next_period(unsigned short period, TIMESTAMP *now)
+{
+	TIMESTAMP           sleep_time;
+#ifdef HAVE_JACK_GET_CYCLE_TIMES
+	jack_nframes_t      jack_frames;
+	int                 delta_frames;
+	int                 usecs;
+	unsigned int        nsec_this_period;
+	unsigned short      next_period = (unsigned short)
+		(period + 1) & sync_info[period].period_mask;
+	unsigned short      last_period = (unsigned short)
+		(period + sync_info[period].period_mask) & sync_info[period].period_mask;
+
+	jack_frames = jack_frame_time(jack_audio_client);
+	delta_frames =
+		(int)((unsigned int)(sync_info[period].jack_frames) -
+		      (unsigned int)(jack_frames)) +
+		(int)(sync_info[period].buffer_period_size);
+
+	//if ( ( (sync_info[period].jack_frames == 0) &&
+	//       (sync_info[period].jack_wakeup_frame == 0 ) ) ||
+	//     (delta_frames >= sync_info[period].buffer_period_size) ) {
+	//	delta_frames = sync_info[period].buffer_period_size;
+	//}
+
+	if (delta_frames > 0) {
+		sleep_time.tv_sec  = (time_t)((sync_info[next_period].jack_next_usecs / 1000000) + 0);
+		sleep_time.tv_nsec = (time_t)((sync_info[next_period].jack_next_usecs % 1000000) * 1000);
+		nsec_this_period = ((unsigned int)(sync_info[next_period].jack_next_usecs) -
+		                    (unsigned int)(sync_info[next_period].jack_current_usecs));
+		//usecs = (int)((timecalc_t)(delta_frames + 16) * (timecalc_t)
+		//              (((unsigned int)(sync_info[period].jack_next_usecs) -
+		//                (unsigned int)(sync_info[period].jack_current_usecs)) /
+		//               sync_info[period].f_buffer_period_size));
+		//time_sub_nsecs(&sleep_time, usecs * 1000);
+		usecs = (int)((timecalc_t)(sync_info[period].f_buffer_period_size + 6.0) * (timecalc_t)(nsec_this_period) /
+		              (timecalc_t)(sync_info[period].f_buffer_period_size));
+		//time_add_nsecs(&sleep_time, usecs * 1000);
+		if (clock_gettime(system_clockid, now) == 0) {
+			JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
+			                DEBUG_COLOR_YELLOW "<%d.%09d> " DEBUG_COLOR_DEFAULT,
+			                now->tv_sec, now->tv_nsec);
+		}
+		JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
+		                DEBUG_COLOR_CYAN "<%d.%09d> " DEBUG_COLOR_DEFAULT,
+		                sleep_time.tv_sec, sleep_time.tv_nsec);
+		time_sub(now, &sleep_time);
+		JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
+		                DEBUG_COLOR_GREEN "<%d.%09d> " DEBUG_COLOR_DEFAULT,
+		                now->tv_sec, now->tv_nsec);
+		JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
+		                DEBUG_COLOR_RED "<%u:%u:%u:%d> " DEBUG_COLOR_DEFAULT,
+		                delta_frames,
+		                jack_frames,
+		                sync_info[period].jack_frames,
+		                usecs);
+# ifdef HAVE_CLOCK_NANOSLEEP
+		clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
+# else
+		nanosleep(sleep_time);
+# endif
+	}
+	else {
+		JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
+		                DEBUG_COLOR_RED "<%d> " DEBUG_COLOR_DEFAULT,
+		                delta_frames);
+	}
+
+	period++;
+	period &= sync_info[period].period_mask;
+
+	sync_info[period].jack_wakeup_frame = 0;
+
+	JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
+	                DEBUG_COLOR_GREEN "%d! " DEBUG_COLOR_DEFAULT, period);
+
+	/* When debug is disabled, a full memory fence is still needed here,
+	   as MIDI Tx is about to dequeue. */
+	asm volatile (" mfence; # read/write fence" : : : "memory");
+
+	return period;
+
+#else /* !HAVE_JACK_GET_CYCLE_TIMES */
+	if ( (clock_gettime(system_clockid, now) == 0) &&
+	     timecmp(now, &(sync_info[period].end_time), TIME_LT) ) {
+		sleep_time.tv_sec  = sync_info[period].end_time.tv_sec;
+		sleep_time.tv_nsec = sync_info[period].end_time.tv_nsec;
+		time_sub(&sleep_time, now);
+# ifdef HAVE_CLOCK_NANOSLEEP
+		clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
+# else
+		nanosleep(sleep_time);
+# endif
+	}
+
+	period++;
+	period &= sync_info[period].period_mask;
+
+	sync_info[period].jack_wakeup_frame = 0;
+
+	JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
+	                DEBUG_COLOR_GREEN "! " DEBUG_COLOR_DEFAULT);
+
+	/* When debug is disabled, a full memory fence is still needed here,
+	   as MIDI Tx is about to dequeue. */
+	asm volatile (" mfence; # read/write fence" : : : "memory");
+
+	return period;
+#endif /* !HAVE_JACK_GET_CYCLE_TIMES */
+}
+
+
+/*****************************************************************************
+ * sleep_until_frame()
+ *
+ * TODO:  Consider the use of select() to sleep for a maximum time instead
+ *        a minimum time as with usleep() and clock_nanosleep().
+ *****************************************************************************/
+void
+sleep_until_frame(unsigned short period, unsigned short frame)
+{
+	TIMESTAMP now;
+	TIMESTAMP sleep_time;
+
+#ifdef HAVE_JACK_GET_CYCLE_TIMES
+	sleep_time.tv_sec  = (time_t)(sync_info[period].jack_current_usecs / 1000000);
+	sleep_time.tv_nsec = (time_t)((sync_info[period].jack_current_usecs % 1000000) * 1000);
+#else /* !HAVE_JACK_GET_CYCLE_TIMES */
+	sleep_time.tv_sec  = sync_info[period].start_time.tv_sec;
+	sleep_time.tv_nsec = sync_info[period].start_time.tv_nsec;
+#endif /* !HAVE_JACK_GET_CYCLE_TIMES */
+
+	time_add_nsecs(&sleep_time,
+	               (int)(sync_info[period].nsec_per_frame *
+	                     (timecalc_t)(frame)));
+
+	if ( (clock_gettime(system_clockid, &now) == 0) &&
+	     (timecmp(&now, &sleep_time, TIME_LT) ) ) {
+		time_sub(&sleep_time, &now);
+		clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
+	}
 }
 
 
@@ -666,23 +856,10 @@ set_new_period_size(unsigned short period, unsigned short nframes)
 	case 1024:
 	case 512:
 	case 256:
-		/* ignore extra command line latencies for large buffer sizes. */
+	case 128:
+		/* ignore extra command line latencies for larger buffer sizes. */
 		sync_info[period].rx_latency_periods = 1;
 		sync_info[period].tx_latency_periods = 1;
-		/* fall-through */
-	case 128:
-		/* When phase lock brings JACK and MIDI phases too close together
-		   for -rt tolerances, increase rx or tx latency to compensate. */
-		if ( ( ((timecalc_t)(nframes) * setting_midi_phase_lock) <
-		       (sync_info[period].sample_rate / 1500) ) && 
-		     (sync_info[period].rx_latency_periods < 2) ) {
-			sync_info[period].rx_latency_periods = 2;
-		}
-		else if ( ( ((timecalc_t)(nframes) * setting_midi_phase_lock) >
-		            (nframes - (sync_info[period].sample_rate / 1500)) ) &&
-		          (sync_info[period].tx_latency_periods < 2) ) {
-			sync_info[period].tx_latency_periods = 2;
-		}
 		sync_info[period].buffer_periods = 4;
 		break;
 	case 64:
@@ -813,6 +990,9 @@ init_sync_info(unsigned int sample_rate, unsigned short period_size)
 
 	for (period = 0; period < MAX_BUFFER_PERIODS; period++) {
 		sync_info[period].jack_wakeup_frame         = 0;
+		sync_info[period].jack_frames               = 0;
+		sync_info[period].jack_current_usecs        = 0;
+		sync_info[period].jack_next_usecs           = 0;
 		sync_info[period].sample_rate               = sample_rate;
 		sync_info[period].f_sample_rate             = (timecalc_t)(sample_rate);
 		sync_info[period].start_time.tv_sec         = 0;
@@ -889,7 +1069,17 @@ set_midi_cycle_time(unsigned short period, int nframes)
 	if (jack_get_cycle_times(jack_audio_client,
 	                         &current_frames, &current_usecs,
 	                         &next_usecs, &period_usecs) == 0) {
-		sync_info[next_period].jack_frames = current_frames;
+
+		sync_info[period].jack_frames        = current_frames;
+		sync_info[period].jack_current_usecs = current_usecs;
+		sync_info[period].jack_next_usecs    = next_usecs;
+
+		sync_info[next_period].jack_frames =
+			current_frames + sync_info[next_period].buffer_period_size;
+		sync_info[next_period].jack_current_usecs = next_usecs;
+		sync_info[next_period].jack_next_usecs    =
+			(next_usecs - current_usecs) + next_usecs;
+
 		cycle_elapsed = jack_frames_since_cycle_start(jack_audio_client);
 		time_sub_nsecs(&jack_start_time,
 		               (int)((timecalc_t)(cycle_elapsed) *
@@ -1073,6 +1263,7 @@ set_midi_cycle_time(unsigned short period, int nframes)
 	}
 #endif
 
+#if 0
 	/* Latch the clock when audio wakes up before the calculated midi period
 	   start. coming in one frame too early is unfortunately common with
 	   non-rt kernels or missing realtime priveleges.  allow for an extra
@@ -1099,8 +1290,10 @@ set_midi_cycle_time(unsigned short period, int nframes)
 	}
 	/* Phase locking lower bound: subtract a partial frame from the start of
 	   the next period (no more than 0.5 to maintian continuity). */
-	else if (delta_nsec <
-	         (sync_info[period].nsec_per_frame * midi_phase_min)) {
+	else
+#endif
+		if (delta_nsec <
+		    (sync_info[period].nsec_per_frame * midi_phase_min)) {
 		next_timeref.tv_nsec -=
 			((int)(sync_info[next_period].nsec_per_frame * 0.25));
 			//((int)(sync_info[next_period].nsec_per_period * 
@@ -1177,8 +1370,14 @@ set_midi_cycle_time(unsigned short period, int nframes)
 	sync_info[next_period].end_time.tv_sec  = next_timeref.tv_sec;
 	sync_info[next_period].end_time.tv_nsec = next_timeref.tv_nsec;
 
-	sync_info[next_period].jack_frames =
-		current_frames + sync_info[next_period].buffer_period_size;
+	sync_info[next_period].jack_frames = current_frames +
+		sync_info[next_period].buffer_period_size +
+		sync_info[next_period].buffer_period_size;
+	sync_info[next_period].jack_current_usecs =
+		(next_usecs - current_usecs) + next_usecs;
+	sync_info[next_period].jack_next_usecs    =
+		(next_usecs - current_usecs) +
+		(next_usecs - current_usecs) + next_usecs;
 
 	/* return the next period index back to the caller */
 	next_period = (unsigned short)(period + 1) &

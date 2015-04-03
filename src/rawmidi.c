@@ -1524,15 +1524,11 @@ raw_midi_rx_thread(void *UNUSED(arg))
 	unsigned short      last_byte_frame     = 0;
 	unsigned short      rx_index            = 0;
 	unsigned short      period;
-	unsigned short      last_period;
 	unsigned short      last_byte_period;
 	unsigned char       type                = MIDI_EVENT_NO_EVENT;
 	unsigned char       channel             = 0x7F;
 	unsigned char       midi_byte;
 	unsigned char       j;
-#ifdef HAVE_JACK_GET_CYCLE_TIMES
-	jack_nframes_t      jack_frame;
-#endif
 
 	out_event        = get_new_midi_event(A2J_QUEUE);
 	out_event->state = EVENT_STATE_ALLOCATED;
@@ -1570,19 +1566,13 @@ raw_midi_rx_thread(void *UNUSED(arg))
 		/* Read new MIDI input, starting with first byte. */
 		if (rawmidi_read(rawmidi_info, (unsigned char *) &midi_byte, 1) == 1) {
 
-			period           = get_midi_period(&now);
 #ifdef HAVE_JACK_GET_CYCLE_TIMES
-			last_period      =
-				(period + sync_info[period].period_mask) &
-				sync_info[period].period_mask;
-			jack_frame       =
-				((int)(jack_frame_time(jack_audio_client)
-				  - (unsigned int)(sync_info[last_period].jack_frames))
-				  - (int)(sync_info[last_period].buffer_period_size)
-				  - (int)(midi_phase_lock) - 5);
-#endif
+			get_midi_frame_jack_dll(&period, &first_byte_frame);
+#else
+			period           = get_midi_period(&now);
 			first_byte_frame = get_midi_frame(&period, &now,
 			                                  FRAME_FIX_LOWER | FRAME_LIMIT_UPPER);
+#endif
 			last_byte_frame  = first_byte_frame;
 			rx_index         = sync_info[period].rx_index;
 
@@ -1707,9 +1697,13 @@ raw_midi_rx_thread(void *UNUSED(arg))
 			if (out_event->bytes > 0) {
 
 				/* keep track of last byte frame and event span for debugging */
+#ifdef HAVE_JACK_GET_CYCLE_TIMES
+				get_midi_frame_jack_dll(&last_byte_period, &last_byte_frame);
+#else
 				last_byte_period = get_midi_period(&now);
 				last_byte_frame  =
 					get_midi_frame(&last_byte_period, &now, FRAME_FIX_LOWER);
+#endif
 				event_frame_span = (short)
 					( (unsigned short)( sync_info[period].buffer_size -
 					    (rx_index + first_byte_frame) +
@@ -1808,16 +1802,9 @@ raw_midi_rx_thread(void *UNUSED(arg))
 
 				JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
 				                DEBUG_COLOR_CYAN "[%d-%d:%d] "
-#ifdef HAVE_JACK_GET_CYCLE_TIMES
-				                DEBUG_COLOR_MAGENTA "[%d] "
-#endif
 				                DEBUG_COLOR_DEFAULT,
 				                first_byte_frame, last_byte_frame,
-				                event_frame_span
-#ifdef HAVE_JACK_GET_CYCLE_TIMES
-				                , jack_frame
-#endif
-				                );
+				                event_frame_span);
 
 				out_event = get_new_midi_event(A2J_QUEUE);
 			}
@@ -1915,7 +1902,11 @@ raw_midi_tx_thread(void *UNUSED(arg))
 	pthread_cond_broadcast(&midi_tx_ready_cond);
 	pthread_mutex_unlock(&midi_tx_ready_mutex);
 
+#ifdef HAVE_JACK_GET_CYCLE_TIMES
+	get_midi_frame_jack_dll(&period, &cycle_frame);
+#else /* !HAVE_JACK_GET_CYCLE_TIMES */
 	period = get_midi_period(&now);
+#endif /* !HAVE_JACK_GET_CYCLE_TIMES */
 	period = sleep_until_next_period(period, &now);
 	cycle_frame = sync_info[period].buffer_period_size;
 
