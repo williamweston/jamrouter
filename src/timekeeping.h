@@ -120,6 +120,7 @@ TIMESTAMP *get_frame_time(unsigned short period,
 
 void set_new_period_size(unsigned short period,
                          unsigned short nframes);
+void init_sync_info_nav(unsigned short period);
 void init_sync_info(unsigned int sample_rate,
                     unsigned short period_size);
 
