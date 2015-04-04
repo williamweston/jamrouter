@@ -31,10 +31,11 @@
 #endif
 #include <asoundlib.h>
 #include <glib.h>
-#ifdef HAVE_JACK_GET_CYCLE_TIMES
+#ifndef WITHOUT_JACK_DLL
 #include <jack.h>
 #endif
 #include "jamrouter.h"
+#include "time.h"
 #include "timekeeping.h"
 #include "mididefs.h"
 #include "midi_event.h"
@@ -43,8 +44,6 @@
 
 
 volatile SYNC_INFO      sync_info[MAX_BUFFER_PERIODS];
-
-clockid_t               system_clockid        = CLOCK_MONOTONIC;
 
 struct timespec         jack_start_time       = { 0, JAMROUTER_CLOCK_INIT };
 
@@ -58,205 +57,62 @@ int                     max_event_latency     = 0;
 
 
 /*****************************************************************************
- * timecmp()
- *****************************************************************************/
-int
-timecmp(volatile TIMESTAMP *a, volatile TIMESTAMP *b, unsigned char mode) {
-	switch (mode) {
-	case TIME_NE:
-		return ((a->tv_sec != b->tv_sec) || (a->tv_nsec != b->tv_nsec));
-		break;
-	case TIME_EQ:
-		return ((a->tv_sec == b->tv_sec) && (a->tv_nsec == b->tv_nsec));
-		break;
-	case TIME_GT:
-		return ((a->tv_sec > b->tv_sec) ||
-		        ((a->tv_sec == b->tv_sec) && (a->tv_nsec > b->tv_nsec)));
-		break;
-	case TIME_GE:
-		return ((a->tv_sec > b->tv_sec) ||
-		        ((a->tv_sec == b->tv_sec) && (a->tv_nsec >= b->tv_nsec)));
-		break;
-	case TIME_LT:
-		return ((a->tv_sec < b->tv_sec) ||
-		        ((a->tv_sec == b->tv_sec) && (a->tv_nsec < b->tv_nsec)));
-		break;
-	case TIME_LE:
-		return ((a->tv_sec < b->tv_sec) ||
-		        ((a->tv_sec == b->tv_sec) && (a->tv_nsec <= b->tv_nsec)));
-		break;
-	default:
-		return 0;
-		break;
-	}
-}
-
-
-/*****************************************************************************
- * time_add()
- *****************************************************************************/
-void
-time_add(volatile TIMESTAMP *a, volatile TIMESTAMP *b) {
-	a->tv_sec  += b->tv_sec;
-	a->tv_nsec += b->tv_nsec;
-	while (a->tv_nsec >= 1000000000) {
-		a->tv_nsec -= 1000000000;
-		a->tv_sec++;
-	}
-	while (a->tv_nsec < 0) {
-		a->tv_nsec += 1000000000;
-		a->tv_sec--;
-	}
-}
-
-
-/*****************************************************************************
- * time_sub()
- *****************************************************************************/
-void
-time_sub(volatile TIMESTAMP *a, volatile TIMESTAMP *b) {
-	a->tv_sec -= b->tv_sec;
-	if (b->tv_nsec > a->tv_nsec) {
-		a->tv_nsec = a->tv_nsec + 1000000000 - b->tv_nsec;
-		a->tv_sec--;
-	}
-	else {
-		a->tv_nsec -= b->tv_nsec;
-	}
-	while (a->tv_nsec >= 1000000000) {
-		a->tv_nsec -= 1000000000;
-		a->tv_sec++;
-	}
-	while (a->tv_nsec < 0) {
-		a->tv_nsec += 1000000000;
-		a->tv_sec--;
-	}
-}
-
-
-/*****************************************************************************
- * time_add_nsecs()
- *****************************************************************************/
-void
-time_add_nsecs(volatile TIMESTAMP *a, int nsecs) {
-	int nsec = nsecs;
-
-	while (nsec > 1000000000) {
-		nsec -= 1000000000;
-		a->tv_sec++;
-	}
-	while (nsec < 0) {
-		nsec += 1000000000;
-		a->tv_sec--;
-	}
-	a->tv_nsec += nsec;
-	while (a->tv_nsec >= 1000000000) {
-		a->tv_nsec -= 1000000000;
-		a->tv_sec++;
-	}
-	while (a->tv_nsec < 0) {
-		a->tv_nsec += 1000000000;
-		a->tv_sec--;
-	}
-}
-
-
-/*****************************************************************************
- * time_sub_nsecs()
- *****************************************************************************/
-void
-time_sub_nsecs(volatile TIMESTAMP *a, int nsecs) {
-	int nsec = nsecs;
-
-	while (nsec > 1000000000) {
-		nsec -= 1000000000;
-		a->tv_sec--;
-	}
-	while (nsec < 0) {
-		nsec += 1000000000;
-		a->tv_sec++;
-	}
-	if (a->tv_nsec < nsec) {
-		a->tv_nsec = a->tv_nsec + 1000000000 - nsec;
-		a->tv_sec--;
-	}
-	else {
-		a->tv_nsec -= nsec;
-	}
-	while (a->tv_nsec >= 1000000000) {
-		a->tv_nsec -= 1000000000;
-		a->tv_sec++;
-	}
-	while (a->tv_nsec < 0) {
-		a->tv_nsec += 1000000000;
-		a->tv_sec--;
-	}
-}
-
-
-/*****************************************************************************
- * time_nsecs()
- *****************************************************************************/
-timecalc_t
-time_nsecs(volatile TIMESTAMP *a)
-{
-	return (((timecalc_t)(a->tv_sec) * (timecalc_t)(1000000000)) +
-	        (timecalc_t)(a->tv_nsec));
-}
-
-
-/*****************************************************************************
- * clock_gettime()
+ * sleep_until_next_period()
  *
- * replacement for systems without it.
+ * TODO:  Consider the use of select() to sleep for a maximum time instead
+ *        a minimum time as with usleep() and clock_nanosleep().
  *****************************************************************************/
-#ifndef HAVE_CLOCK_GETTIME
-int
-clock_gettime(clockid_t UNUSED(clockid), struct timespec *ts)
+unsigned short
+sleep_until_next_period(unsigned short period, TIMESTAMP *now)
 {
-	struct timeval  tv;
+	TIMESTAMP           sleep_time;
 
-	if (gettimeofday(&tv, NULL) == 0) {
-		ts->tv_sec  = tv.tv_sec;
-		ts->tv_nsec = tv.tv_usec * 1000;
-		return 0;
-	}
-	return -1;
-}
-#endif /* !HAVE_CLOCK_GETTIME */
-
-
-/*****************************************************************************
- * jamrouter_usleep()
- *****************************************************************************/
-void
-jamrouter_usleep(int usecs)
-{
-#ifdef HAVE_CLOCK_NANOSLEEP
-	struct timespec         sleep_time       = { 0, usecs * 1000 };
-#endif
-
-	if (usecs > 0) {
+	if ( (clock_gettime(system_clockid, now) == 0) &&
+	     timecmp(now, &(sync_info[period].end_time), TIME_LT) ) {
+		time_copy(&sleep_time, &(sync_info[period].end_time));
+		time_sub(&sleep_time, now);
 #ifdef HAVE_CLOCK_NANOSLEEP
 		clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
 #else
-		usleep(sleep_time);
+		nanosleep(sleep_time);
 #endif
 	}
+
+	period = sync_info[period].next;
+
+	sync_info[period].jack_wakeup_frame = 0;
+
+	JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
+	                DEBUG_COLOR_GREEN "%d! " DEBUG_COLOR_DEFAULT, period);
+
+	/* When debug is disabled, a full memory fence is still needed here,
+	   as MIDI Tx is about to dequeue. */
+	asm volatile (" mfence; # read/write fence" : : : "memory");
+
+	return period;
 }
 
 
 /*****************************************************************************
- * jamrouter_nanosleep()
+ * sleep_until_frame()
+ *
+ * TODO:  Consider the use of select() to sleep for a maximum time instead
+ *        a minimum time as with usleep() and clock_nanosleep().
  *****************************************************************************/
 void
-jamrouter_nanosleep(long int nsecs)
+sleep_until_frame(unsigned short period, unsigned short frame)
 {
-#ifdef HAVE_CLOCK_NANOSLEEP
-	struct timespec         sleep_time       = { 0, nsecs };
-#endif
+	TIMESTAMP now;
+	TIMESTAMP sleep_time;
 
-	if (nsecs > 5000) {
+	time_copy(&sleep_time, &(sync_info[period].start_time));
+	time_add_nsecs(&sleep_time,
+	               (int)(sync_info[period].nsec_per_frame *
+	                     (timecalc_t)(frame)));
+
+	if ( (clock_gettime(system_clockid, &now) == 0) &&
+	     (timecmp(&now, &sleep_time, TIME_LT) ) ) {
+		time_sub(&sleep_time, &now);
 #ifdef HAVE_CLOCK_NANOSLEEP
 		clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
 #else
@@ -272,10 +128,10 @@ jamrouter_nanosleep(long int nsecs)
 void
 set_midi_phase_lock(unsigned short period)
 {
-#if 1
-	midi_phase_lock = 4.0;
-	midi_phase_min  = midi_phase_lock - (timecalc_t)(4.0);
-	midi_phase_max  = midi_phase_lock + (timecalc_t)(4.0);
+#if 0
+	midi_phase_lock = 6.0;
+	midi_phase_min  = midi_phase_lock - (timecalc_t)(3.0);
+	midi_phase_max  = midi_phase_lock + (timecalc_t)(3.0);
 #else
 	midi_phase_lock = (timecalc_t)(setting_midi_phase_lock *
 	                               sync_info[period].f_buffer_period_size);
@@ -297,9 +153,9 @@ set_midi_phase_lock(unsigned short period)
 	   hard-latching the clock's phase (and introducing jitter) when jack
 	   wakes up late. */
 	if (sync_info[period].buffer_period_size == 16) {
-			midi_phase_lock  = (timecalc_t)(5.0);
-			midi_phase_min   = (timecalc_t)(1.5);
-			midi_phase_max   = (timecalc_t)(8.5);
+		midi_phase_lock  = (timecalc_t)(5.0);
+		midi_phase_min   = (timecalc_t)(1.5);
+		midi_phase_max   = (timecalc_t)(8.5);
 	}
 
 	/* For all other buffer sizes, keep the phase lock within 8 samples of
@@ -331,11 +187,10 @@ set_midi_phase_lock(unsigned short period)
 void
 start_midi_clock(void)
 {
-	TIMESTAMP     now;
+	TIMESTAMP           now;
 	unsigned char       period = 0;
 
-	jack_start_time.tv_sec  = 0;
-	jack_start_time.tv_nsec = JAMROUTER_CLOCK_INIT;
+	time_init(&jack_start_time, JAMROUTER_CLOCK_INIT);
 
 	sync_info[period].nsec_per_period =
 		sync_info[period].f_buffer_period_size *
@@ -346,7 +201,7 @@ start_midi_clock(void)
 		sync_info[period].nsec_per_period
 		/ sync_info[period].f_buffer_period_size;
 
-	set_midi_phase_lock(period);
+	//set_midi_phase_lock(period);
 
 	/* now initialize the reference timestamps. */
 #ifdef CLOCK_MONOTONIC
@@ -366,108 +221,15 @@ start_midi_clock(void)
 #endif
 	if (clock_gettime(system_clockid, &now) == 0) {
 		for (period = 0; period < DEFAULT_BUFFER_PERIODS; period++) {
-			sync_info[period].start_time.tv_sec  = now.tv_sec;
-			sync_info[period].start_time.tv_nsec = now.tv_nsec;
+			time_copy(&(sync_info[period].start_time), &now);
 			/* initialize the active sensing timeout to zero (off). */
-			sync_info[period].sensing_timeout[A2J_QUEUE].tv_sec  = 0;
-			sync_info[period].sensing_timeout[A2J_QUEUE].tv_nsec =
-				JAMROUTER_CLOCK_INIT;
-			sync_info[period].sensing_timeout[J2A_QUEUE].tv_sec  = 0;
-			sync_info[period].sensing_timeout[J2A_QUEUE].tv_nsec =
-				JAMROUTER_CLOCK_INIT;
+			time_init(&(sync_info[period].sensing_timeout[A2J_QUEUE]),
+			          JAMROUTER_CLOCK_INIT);
+			time_init(&(sync_info[period].sensing_timeout[J2A_QUEUE]),
+			          JAMROUTER_CLOCK_INIT);
 		}
 	}
-
 }
-
-
-#ifdef HAVE_JACK_GET_CYCLE_TIMES
-/*****************************************************************************
- * get_midi_period_jack_dll()
- *****************************************************************************/
-unsigned short
-get_midi_period_jack_dll(jack_nframes_t current_frame)
-{
-	unsigned short     period;
-	unsigned short     elapsed_periods;
-	unsigned short     recent_period        = 0;
-	jack_nframes_t     recent_cycle_start   = 0;
-	jack_nframes_t     delta_frames;
-	
-	/* Any thread needing to know what period we are in right now should under
-	   no circumstances use invalid sync_info[] for the current period.  This
-	   memory fence assures us that the compiler and the CPU do not do the
-	   wrong thing here.  In the case where current sync_info[] is not
-	   fetched, either a true CPU cache latency miss or the audio system
-	   skipping a cycle, extra logic is included below so that JAMRouter MIDI
-	   threads do not do the wrong thing when it comes to synchronization. */
-	asm volatile ("mfence; # read/write fence" : : : "memory");
-
-	for (period = 0; period < sync_info[0].buffer_periods; period++) {
-		/* check jack framestamps */
-		if ( (current_frame >= sync_info[period].jack_frames) &&
-		     (current_frame < (sync_info[period].jack_frames +
-		                       sync_info[period].buffer_period_size)) ) {
-			return period;
-		}
-		/* keep track of most recent sync_info found. */
-		if (sync_info[period].jack_frames > recent_cycle_start) {
-			recent_cycle_start = sync_info[period].jack_frames;
-			recent_period = period;
-		}
-	}
-
-	/* Control reaches this point only before clock starts or when
-       sync_info[period] is found to be stale.  This extra logic only becomes
-       necessary when the number of periods in the sync_info[] ringbuffer is
-       pushed lower than 4, yet it remains as an extra safeguard against
-       against synchronization error, as the behavior of this logic has shown
-       itself to be 100% correct.  In the case of any sort of synchronization
-       error, timing information is dependably extrapolated from the most
-       recent sync_info in the ringbuffer.  In the case of buffer size changes
-       and synchronization failure at the same time, the MIDI threads will
-       pick up the change exactly one period (pre jack_bufsize reckoning)
-       late.  This of course should never be a concern during the middle of a
-       performance. */
-	delta_frames = current_frame - recent_cycle_start;
-	elapsed_periods =
-		(unsigned short)(delta_frames /
-		                 sync_info[recent_period].buffer_period_size);
-	period =
-		(unsigned short)((recent_period + elapsed_periods) &
-		                 sync_info[recent_period].period_mask);
-
-	JAMROUTER_DEBUG(DEBUG_CLASS_TESTING, DEBUG_COLOR_RED "}}%d{{ ", period);
-
-	return period;
-}
-
-
-/*****************************************************************************
- * get_midi_frame_jack_dll()
- *****************************************************************************/
-void
-get_midi_frame_jack_dll(unsigned short *period, unsigned short *frame)
-{
-	jack_nframes_t  jack_frame;
-
-	jack_frame = jack_frame_time(jack_audio_client);
-	*period = get_midi_period_jack_dll(jack_frame);
-
-	jack_frame = (unsigned int)
-		((jack_frame - (unsigned int)(sync_info[*period].jack_frames)) -
-		 (unsigned int)(sync_info[*period].buffer_period_size) -
-		 (unsigned int)(sync_info[*period].rx_latency_size) -
-		 (unsigned int)(0));
-
-	*frame = (unsigned short)
-		(jack_frame & sync_info[*period].buffer_period_mask);
-
-	//JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
-	//                DEBUG_COLOR_MAGENTA "[%u] " DEBUG_COLOR_DEFAULT,
-	//                *frame);
-}
-#endif /* HAVE_JACK_GET_CYCLE_TIMES */
 
 
 /*****************************************************************************
@@ -497,7 +259,7 @@ get_midi_period(TIMESTAMP *now)
 	   threads do not do the wrong thing when it comes to synchronization. */
 	asm volatile ("mfence; # read/write fence" : : : "memory");
 
-	for (period = 0; period < sync_info[0].buffer_periods; period++) {
+	for (period = 0; period < MAX_BUFFER_PERIODS; period++) {
 		/* check timestamps to find current MIDI period */
 		if ( ( timecmp(now, &(sync_info[last_period].end_time), TIME_GT) ||
 		       timecmp(now, &(sync_info[period].start_time),    TIME_GE) ) &&
@@ -507,8 +269,7 @@ get_midi_period(TIMESTAMP *now)
 		/* keep track of most recent sync_info found. */
 		if ( timecmp(&recent, &(sync_info[period].start_time),    TIME_LE) ||
 		     timecmp(&recent, &(sync_info[last_period].end_time), TIME_LT) ) {
-			recent.tv_sec  = sync_info[period].start_time.tv_sec;
-			recent.tv_nsec = sync_info[period].start_time.tv_nsec;
+			time_copy(&recent, &(sync_info[period].start_time));
 			recent_period = period;
 		}
 		last_period = period;
@@ -526,18 +287,21 @@ get_midi_period(TIMESTAMP *now)
        pick up the change exactly one period (pre jack_bufsize reckoning)
        late.  This of course should never be a concern during the middle of a
        performance. */
-	delta.tv_sec  = now->tv_sec;
-	delta.tv_nsec = now->tv_nsec;
+	time_copy(&delta, now);
 	time_sub(&delta, &recent);
 	delta_nsec = time_nsecs(&delta);
-	elapsed_periods =
-		(unsigned short)(delta_nsec /
-		                 sync_info[recent_period].nsec_per_period);
-	period =
-		(unsigned short)((recent_period + elapsed_periods) &
-		                 sync_info[recent_period].period_mask);
-
-	JAMROUTER_DEBUG(DEBUG_CLASS_TESTING, DEBUG_COLOR_RED "}}%d{{ ", period);
+	if (sync_info[recent_period].nsec_per_period != 0.0) {
+		elapsed_periods =
+			(unsigned short)(delta_nsec /
+			                 sync_info[recent_period].nsec_per_period);
+		period =
+			(unsigned short)((recent_period + elapsed_periods) &
+			                 sync_info[recent_period].period_mask);
+		JAMROUTER_DEBUG(DEBUG_CLASS_TESTING, DEBUG_COLOR_RED "}}%d{{ ", period);
+	}
+	else {
+		JAMROUTER_DEBUG(DEBUG_CLASS_TESTING, DEBUG_COLOR_RED "}}{{ ", period);
+	}
 
 	return period;
 }
@@ -589,9 +353,7 @@ get_midi_frame(unsigned short *period, TIMESTAMP *now, unsigned char flags)
 			while (frame < 0) {
 				frame =	(short)(frame + (short)
 					        (sync_info[*period].buffer_period_size));
-				*period = ((unsigned short)
-				           (*period + sync_info[*period].period_mask) &
-				           (unsigned short)(sync_info[*period].period_mask));
+				*period = sync_info[*period].prev;
 			}
 			JAMROUTER_DEBUG(DEBUG_CLASS_TESTING,
 			                DEBUG_COLOR_RED "]]%d[[ ", *period);
@@ -618,174 +380,11 @@ get_frame_time(unsigned short   period,
                unsigned short   frame,
                TIMESTAMP        *frame_time)
 {
-#ifdef HAVE_JACK_GET_CYCLE_TIMES
-	jack_time_t     jack_time;
+	time_copy(frame_time, &(sync_info[period].start_time));
+	time_add_nsecs(frame_time, (int)(sync_info[period].nsec_per_frame *
+	                                 (timecalc_t)(frame)));
 
-	jack_time = jack_frames_to_time(jack_audio_client, (jack_nframes_t)
-	                                (frame + sync_info[period].jack_frames));
-
-	frame_time->tv_sec  = (int)(jack_time / (jack_time_t)(1000000));
-	frame_time->tv_nsec = (int)(jack_time % (jack_time_t)(1000000)) * (int)(1000);
-#else /* !HAVE_JACK_GET_CYCLE_TIMES */
-	frame_time->tv_sec  = sync_info[period].start_time.tv_sec;
-	frame_time->tv_nsec = sync_info[period].start_time.tv_nsec;
-
-	time_add_nsecs(frame_time,
-	               (int)(sync_info[period].nsec_per_frame * (double)(frame)));
-
-#endif /* !HAVE_JACK_GET_CYCLE_TIMES */
 	return frame_time;
-}
-
-
-/*****************************************************************************
- * sleep_until_next_period()
- *
- * TODO:  Consider the use of select() to sleep for a maximum time instead
- *        a minimum time as with usleep() and clock_nanosleep().
- *****************************************************************************/
-unsigned short
-sleep_until_next_period(unsigned short period, TIMESTAMP *now)
-{
-	TIMESTAMP           sleep_time;
-#ifdef HAVE_JACK_GET_CYCLE_TIMES
-	jack_nframes_t      jack_frames;
-	int                 delta_frames;
-	int                 usecs;
-	unsigned int        nsec_this_period;
-	unsigned short      next_period = (unsigned short)
-		(period + 1) & sync_info[period].period_mask;
-	unsigned short      last_period = (unsigned short)
-		(period + sync_info[period].period_mask) & sync_info[period].period_mask;
-
-	jack_frames = jack_frame_time(jack_audio_client);
-	delta_frames =
-		(int)((unsigned int)(sync_info[period].jack_frames) -
-		      (unsigned int)(jack_frames)) +
-		(int)(sync_info[period].buffer_period_size);
-
-	//if ( ( (sync_info[period].jack_frames == 0) &&
-	//       (sync_info[period].jack_wakeup_frame == 0 ) ) ||
-	//     (delta_frames >= sync_info[period].buffer_period_size) ) {
-	//	delta_frames = sync_info[period].buffer_period_size;
-	//}
-
-	if (delta_frames > 0) {
-		sleep_time.tv_sec  = (time_t)((sync_info[next_period].jack_next_usecs / 1000000UL) + 0);
-		sleep_time.tv_nsec = (time_t)((sync_info[next_period].jack_next_usecs % 1000000UL) * 1000UL);
-		nsec_this_period = ((unsigned int)(sync_info[next_period].jack_next_usecs) -
-		                    (unsigned int)(sync_info[next_period].jack_current_usecs));
-		//usecs = (int)((timecalc_t)(delta_frames + 16) * (timecalc_t)
-		//              (((unsigned int)(sync_info[period].jack_next_usecs) -
-		//                (unsigned int)(sync_info[period].jack_current_usecs)) /
-		//               sync_info[period].f_buffer_period_size));
-		//time_sub_nsecs(&sleep_time, usecs * 1000);
-		usecs = (int)((timecalc_t)(sync_info[period].f_buffer_period_size + 6.0) * (timecalc_t)(nsec_this_period) /
-		              (timecalc_t)(sync_info[period].f_buffer_period_size));
-		//time_add_nsecs(&sleep_time, usecs * 1000);
-		if (clock_gettime(system_clockid, now) == 0) {
-			JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
-			                DEBUG_COLOR_YELLOW "<%d.%09d> " DEBUG_COLOR_DEFAULT,
-			                now->tv_sec, now->tv_nsec);
-		}
-		JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
-		                DEBUG_COLOR_CYAN "<%d.%09d> " DEBUG_COLOR_DEFAULT,
-		                sleep_time.tv_sec, sleep_time.tv_nsec);
-		time_sub(now, &sleep_time);
-		JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
-		                DEBUG_COLOR_GREEN "<%d.%09d> " DEBUG_COLOR_DEFAULT,
-		                now->tv_sec, now->tv_nsec);
-		JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
-		                DEBUG_COLOR_RED "<%u:%u:%u:%d> " DEBUG_COLOR_DEFAULT,
-		                delta_frames,
-		                jack_frames,
-		                sync_info[period].jack_frames,
-		                usecs);
-# ifdef HAVE_CLOCK_NANOSLEEP
-		clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
-# else
-		nanosleep(sleep_time);
-# endif
-	}
-	else {
-		JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
-		                DEBUG_COLOR_RED "<%d> " DEBUG_COLOR_DEFAULT,
-		                delta_frames);
-	}
-
-	period++;
-	period &= sync_info[period].period_mask;
-
-	sync_info[period].jack_wakeup_frame = 0;
-
-	JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
-	                DEBUG_COLOR_GREEN "%d! " DEBUG_COLOR_DEFAULT, period);
-
-	/* When debug is disabled, a full memory fence is still needed here,
-	   as MIDI Tx is about to dequeue. */
-	asm volatile (" mfence; # read/write fence" : : : "memory");
-
-	return period;
-
-#else /* !HAVE_JACK_GET_CYCLE_TIMES */
-	if ( (clock_gettime(system_clockid, now) == 0) &&
-	     timecmp(now, &(sync_info[period].end_time), TIME_LT) ) {
-		sleep_time.tv_sec  = sync_info[period].end_time.tv_sec;
-		sleep_time.tv_nsec = sync_info[period].end_time.tv_nsec;
-		time_sub(&sleep_time, now);
-# ifdef HAVE_CLOCK_NANOSLEEP
-		clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
-# else
-		nanosleep(sleep_time);
-# endif
-	}
-
-	period++;
-	period &= sync_info[period].period_mask;
-
-	sync_info[period].jack_wakeup_frame = 0;
-
-	JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
-	                DEBUG_COLOR_GREEN "! " DEBUG_COLOR_DEFAULT);
-
-	/* When debug is disabled, a full memory fence is still needed here,
-	   as MIDI Tx is about to dequeue. */
-	asm volatile (" mfence; # read/write fence" : : : "memory");
-
-	return period;
-#endif /* !HAVE_JACK_GET_CYCLE_TIMES */
-}
-
-
-/*****************************************************************************
- * sleep_until_frame()
- *
- * TODO:  Consider the use of select() to sleep for a maximum time instead
- *        a minimum time as with usleep() and clock_nanosleep().
- *****************************************************************************/
-void
-sleep_until_frame(unsigned short period, unsigned short frame)
-{
-	TIMESTAMP now;
-	TIMESTAMP sleep_time;
-
-#ifdef HAVE_JACK_GET_CYCLE_TIMES
-	sleep_time.tv_sec  = (time_t)(sync_info[period].jack_current_usecs / 1000000);
-	sleep_time.tv_nsec = (time_t)((sync_info[period].jack_current_usecs % 1000000) * 1000);
-#else /* !HAVE_JACK_GET_CYCLE_TIMES */
-	sleep_time.tv_sec  = sync_info[period].start_time.tv_sec;
-	sleep_time.tv_nsec = sync_info[period].start_time.tv_nsec;
-#endif /* !HAVE_JACK_GET_CYCLE_TIMES */
-
-	time_add_nsecs(&sleep_time,
-	               (int)(sync_info[period].nsec_per_frame *
-	                     (timecalc_t)(frame)));
-
-	if ( (clock_gettime(system_clockid, &now) == 0) &&
-	     (timecmp(&now, &sleep_time, TIME_LT) ) ) {
-		time_sub(&sleep_time, &now);
-		clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
-	}
 }
 
 
@@ -793,13 +392,16 @@ sleep_until_frame(unsigned short period, unsigned short frame)
  * get_delta_nsecs()
  *
  * Returns the floating point difference in nanoseconds between
- * two timestamps.
+ * two timestamps (usually now and process callback start time).
  *****************************************************************************/
 timecalc_t
 get_delta_nsecs(TIMESTAMP *now, volatile TIMESTAMP *start)
 {
-	if (clock_gettime(system_clockid, now) != 0) {
-		jamrouter_shutdown("clock_gettime() failed!\n");
+	if ((now->tv_sec == 0) && ((now->tv_nsec == 0) ||
+	                           (now->tv_nsec == JAMROUTER_CLOCK_INIT))) {
+		if (clock_gettime(system_clockid, now) != 0) {
+			jamrouter_shutdown("clock_gettime() failed!\n");
+		}
 	}
 
 	return (timecalc_t)((((timecalc_t)(now->tv_sec) -
@@ -821,6 +423,8 @@ void
 set_new_period_size(unsigned short period, unsigned short nframes)
 {
 	unsigned short  max_latency     = 0;
+	unsigned short  last_period;
+	unsigned short  p;
 
 	/* If command line values are not supplied, calculate default rx/tx
 	   latency periods so that latency+jitter is never low enough to lead
@@ -856,10 +460,23 @@ set_new_period_size(unsigned short period, unsigned short nframes)
 	case 1024:
 	case 512:
 	case 256:
-	case 128:
 		/* ignore extra command line latencies for larger buffer sizes. */
 		sync_info[period].rx_latency_periods = 1;
 		sync_info[period].tx_latency_periods = 1;
+		/* fall-through */
+	case 128:
+		/* When phase lock brings JACK and MIDI phases too close together
+		   for -rt tolerances, increase rx or tx latency to compensate. */
+		if ( ( ((timecalc_t)(nframes) * setting_midi_phase_lock) <
+		       (sync_info[period].sample_rate / 1500) ) && 
+		     (sync_info[period].rx_latency_periods < 2) ) {
+			sync_info[period].rx_latency_periods = 2;
+		}
+		else if ( ( ((timecalc_t)(nframes) * setting_midi_phase_lock) >
+		            (nframes - (sync_info[period].sample_rate / 1500)) ) &&
+		          (sync_info[period].tx_latency_periods < 2) ) {
+			sync_info[period].tx_latency_periods = 2;
+		}
 		sync_info[period].buffer_periods = 4;
 		break;
 	case 64:
@@ -974,6 +591,23 @@ set_new_period_size(unsigned short period, unsigned short nframes)
 
 	/* calculate new midi phase lock for current buffer size. */
 	set_midi_phase_lock(period);
+
+	/* rebuild linked list based on number of periods */
+	last_period = sync_info[period].period_mask;
+	for (p = 0;
+	     p < sync_info[period].buffer_periods;
+	     p++) {
+		sync_info[p].prev = last_period;
+		sync_info[last_period].next = p;
+		last_period = p;
+	}
+	for (p = sync_info[period].buffer_periods;
+	     p < MAX_BUFFER_PERIODS;
+	     p++) {
+		sync_info[p].prev = last_period;
+		sync_info[last_period].next = 0;
+		last_period = p;
+	}
 }
 
 
@@ -984,29 +618,32 @@ set_new_period_size(unsigned short period, unsigned short nframes)
  * ringbuffer once the sample rate and buffer period size are known.
  *****************************************************************************/
 void
-init_sync_info(unsigned int sample_rate, unsigned short period_size)
+init_sync_info(unsigned int sample_rate, unsigned short UNUSED(period_size))
 {
 	unsigned short     period;
+	unsigned short     last_period  = MAX_BUFFER_PERIODS - 1;
 
 	for (period = 0; period < MAX_BUFFER_PERIODS; period++) {
-		sync_info[period].jack_wakeup_frame         = 0;
-		sync_info[period].jack_frames               = 0;
-		sync_info[period].jack_current_usecs        = 0;
-		sync_info[period].jack_next_usecs           = 0;
-		sync_info[period].sample_rate               = sample_rate;
-		sync_info[period].f_sample_rate             = (timecalc_t)(sample_rate);
-		sync_info[period].start_time.tv_sec         = 0;
-		sync_info[period].start_time.tv_nsec        = JAMROUTER_CLOCK_INIT;
-		sync_info[period].end_time.tv_sec           = 0;
-		sync_info[period].end_time.tv_nsec          = JAMROUTER_CLOCK_INIT;
-		sync_info[period].sensing_timeout[A2J_QUEUE].tv_sec    = 0;
-		sync_info[period].sensing_timeout[A2J_QUEUE].tv_nsec   =
-			JAMROUTER_CLOCK_INIT;
-		sync_info[period].sensing_timeout[J2A_QUEUE].tv_sec    = 0;
-		sync_info[period].sensing_timeout[J2A_QUEUE].tv_nsec   =
-			JAMROUTER_CLOCK_INIT;
-		set_new_period_size(period, period_size);
+		sync_info[period].jack_wakeup_frame  = 0;
+		sync_info[period].jack_frames        = 0;
+		sync_info[period].jack_current_usecs = 0;
+		sync_info[period].jack_next_usecs    = 0;
+		sync_info[period].sample_rate        = sample_rate;
+		sync_info[period].f_sample_rate      = (timecalc_t)(sample_rate);
+		sync_info[period].start_time.tv_sec  = 0;
+		sync_info[period].start_time.tv_nsec = JAMROUTER_CLOCK_INIT;
+		sync_info[period].end_time.tv_sec    = 0;
+		sync_info[period].end_time.tv_nsec   = JAMROUTER_CLOCK_INIT;
+		time_init(&(sync_info[period].sensing_timeout[A2J_QUEUE]),
+		          JAMROUTER_CLOCK_INIT);
+		time_init(&(sync_info[period].sensing_timeout[J2A_QUEUE]),
+		          JAMROUTER_CLOCK_INIT);
+		sync_info[period].prev = last_period;
+		sync_info[last_period].next = period;
+		last_period = period;
 	}
+	sync_info[3].next = 0;
+	sync_info[0].prev = 3;
 }
 
 
@@ -1047,7 +684,7 @@ set_midi_cycle_time(unsigned short period, int nframes)
 	timecalc_t              avg_period_nsec;
 	unsigned short          last_period;
 	unsigned short          next_period;
-#ifdef HAVE_JACK_GET_CYCLE_TIMES
+#ifndef WITHOUT_JACK_DLL
 	/* these values are provided by jack_get_cycle_times() */
 	jack_nframes_t          current_frames;
 	jack_time_t             current_usecs;
@@ -1060,34 +697,33 @@ set_midi_cycle_time(unsigned short period, int nframes)
 	next_period = (unsigned short)(period + 1) &
 		sync_info[period].period_mask;
 
-	last.tv_sec  = (int)jack_start_time.tv_sec;
-	last.tv_nsec = (int)jack_start_time.tv_nsec;
+	time_copy(&last, &jack_start_time);
 
 	clock_gettime(system_clockid, &jack_start_time);
 
-#ifdef HAVE_JACK_GET_CYCLE_TIMES
-	if (jack_get_cycle_times(jack_audio_client,
-	                         &current_frames, &current_usecs,
-	                         &next_usecs, &period_usecs) == 0) {
+#ifndef WITHOUT_JACK_DLL
+	if ( (jack_dll_level > 0) &&
+	     (jack_get_cycle_times(jack_audio_client,
+	                           &current_frames, &current_usecs,
+	                           &next_usecs, &period_usecs) == 0) ) {
 
-		sync_info[period].jack_frames        = current_frames;
-		sync_info[period].jack_current_usecs = current_usecs;
-		sync_info[period].jack_next_usecs    = next_usecs;
+		sync_info[next_period].jack_frames        = current_frames;
+		sync_info[next_period].jack_current_usecs = current_usecs;
+		sync_info[next_period].jack_next_usecs    = next_usecs;
 
-		sync_info[next_period].jack_frames =
-			current_frames + sync_info[next_period].buffer_period_size;
-		sync_info[next_period].jack_current_usecs = next_usecs;
-		sync_info[next_period].jack_next_usecs    =
-			(next_usecs - current_usecs) + next_usecs;
+		sync_info[next_period].jack_nsec_per_period = (timecalc_t)
+			((unsigned int)(sync_info[next_period].jack_next_usecs) -
+			 (unsigned int)(sync_info[next_period].jack_current_usecs)) *
+			(timecalc_t)(1000.0);
+
+		sync_info[next_period].jack_nsec_per_frame =
+			sync_info[next_period].jack_nsec_per_period /
+			sync_info[next_period].f_buffer_period_size;
 
 		cycle_elapsed = jack_frames_since_cycle_start(jack_audio_client);
 		time_sub_nsecs(&jack_start_time,
 		               (int)((timecalc_t)(cycle_elapsed) *
-		                     sync_info[period].nsec_per_period));
-	}
-	else {
-		JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
-		                DEBUG_COLOR_RED "!" DEBUG_COLOR_DEFAULT);
+		                     sync_info[next_period].jack_nsec_per_period));
 	}
 #endif
 
@@ -1131,15 +767,15 @@ set_midi_cycle_time(unsigned short period, int nframes)
 
 		/* Set buffer period size and calculate new sync variables */
 		for (next_period = 0; next_period < MAX_BUFFER_PERIODS; next_period++) {
-			/* Don't touch current period.  Other threads are still using the
-			   current period's old sync_info[].  They will pick up new
-			   sync_info[] during the next period. */
+			/* Don't touch current period other than fixing the linked list
+			   "pointers".  Other threads are still using the current period's
+			   old sync_info[].  They will pick up new sync_info[] during the
+			   next period. */
 			if (next_period != period) {
 				set_new_period_size(next_period, (unsigned short)(nframes));
 			}
 		}
-		next_period =
-			(unsigned short)(period + 1) & sync_info[period].period_mask;
+		next_period = sync_info[period].next;
 		JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
 		                DEBUG_COLOR_YELLOW "@" DEBUG_COLOR_DEFAULT);
 
@@ -1157,25 +793,21 @@ set_midi_cycle_time(unsigned short period, int nframes)
 			(timecalc_t)(midi_phase_lock);
 
 		/* Set initial timeref to match target audio wakeup phase. */
-		sync_info[last_period].start_time.tv_sec  = jack_start_time.tv_sec;
-		sync_info[last_period].start_time.tv_nsec = jack_start_time.tv_nsec;
+		time_copy(&(sync_info[last_period].start_time), &jack_start_time);
 		time_sub_nsecs(&(sync_info[last_period].start_time),
 		               (int)(delta_nsec));
 
-		sync_info[last_period].end_time.tv_sec  = jack_start_time.tv_sec;
-		sync_info[last_period].end_time.tv_nsec = jack_start_time.tv_nsec;
+		time_copy(&(sync_info[last_period].end_time), &jack_start_time);
 		time_add_nsecs(&(sync_info[last_period].end_time),
 		               (int)(sync_info[last_period].nsec_per_period -
 		                     delta_nsec));
 
-		sync_info[next_period].start_time.tv_sec  = jack_start_time.tv_sec;
-		sync_info[next_period].start_time.tv_nsec = jack_start_time.tv_nsec;
+		time_copy(&(sync_info[next_period].start_time), &jack_start_time);
 		time_add_nsecs(&(sync_info[next_period].start_time),
 		               (int)(sync_info[next_period].nsec_per_period -
 		                     delta_nsec));
 
-		sync_info[next_period].end_time.tv_sec  = jack_start_time.tv_sec;
-		sync_info[next_period].end_time.tv_nsec = jack_start_time.tv_nsec;
+		time_copy(&(sync_info[next_period].end_time), &jack_start_time);
 		time_add_nsecs(&(sync_info[next_period].end_time),
 		               (int)(((timecalc_t)(2.0) *
 		                      sync_info[last_period].nsec_per_period)
@@ -1183,15 +815,15 @@ set_midi_cycle_time(unsigned short period, int nframes)
 
 		/* Set nsec_per_period and nsec_per_frame for all periods except the
 		   currently active one. */
-		for (next_period = (unsigned short)((last_period + 1) &
-		                                    sync_info[period].period_mask);
+		for (next_period = sync_info[period].next;
 		     next_period != period;
-		     next_period = (unsigned short)((next_period + 1) &
-		                                    sync_info[period].period_mask)) {
+		     next_period = sync_info[next_period].next) {
+
 			sync_info[next_period].nsec_per_period =
 				sync_info[next_period].f_buffer_period_size *
 				(timecalc_t)(1000000000.0) /
 				(timecalc_t)(sync_info[next_period].f_sample_rate);
+
 			sync_info[next_period].nsec_per_frame  =
 				(sync_info[next_period].nsec_per_period /
 				 sync_info[next_period].f_buffer_period_size);
@@ -1199,8 +831,7 @@ set_midi_cycle_time(unsigned short period, int nframes)
 			last_period = next_period;
 		}
 		last_period = period;
-		next_period = (unsigned short)(period + 1) &
-			sync_info[period].period_mask;
+		next_period = sync_info[period].next;
 	}
 
 	/* handle the normal case (no clock restart). */
@@ -1240,30 +871,29 @@ set_midi_cycle_time(unsigned short period, int nframes)
 		   compensates for buffer period size and sample rate. */
 	}
 
-	timeref.tv_sec       = sync_info[last_period].start_time.tv_sec;
-	timeref.tv_nsec      = sync_info[last_period].start_time.tv_nsec;
-	next_timeref.tv_sec  = timeref.tv_sec;
-	next_timeref.tv_nsec = timeref.tv_nsec;
+	time_copy(&timeref, &(sync_info[last_period].start_time));
+	time_copy(&next_timeref, &timeref);
 
 	sync_info[period].jack_wakeup_frame =
 		(signed short)(delta_nsec / sync_info[period].nsec_per_frame);
 
-#ifdef ENABLE_DEBUG
-	//JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
-	//                DEBUG_COLOR_LTBLUE "{%d:%d:%d:%f} "
-	//                DEBUG_COLOR_DEFAULT,
-	//                current_frames - sync_info[period].jack_frames,
-	//                current_usecs, next_usecs, period_usecs);
-	if ( (current_frames - sync_info[period].jack_frames) !=
-	     sync_info[period].buffer_period_size) {
-		JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
-		                DEBUG_COLOR_RED "{%u} "
-		                DEBUG_COLOR_DEFAULT,
-		                current_frames - sync_info[period].jack_frames);
+#ifdef EXTRA_DEBUG
+	if ((jack_dll_level > 0) && (debug_class & DEBUG_CLASS_ANALYZE)) {
+		//JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
+		//                DEBUG_COLOR_LTBLUE "{%d:%d:%d:%f} "
+		//                DEBUG_COLOR_DEFAULT,
+		//                current_frames - sync_info[period].jack_frames,
+		//                current_usecs, next_usecs, period_usecs);
+		if ( (current_frames - sync_info[period].jack_frames) !=
+		     sync_info[period].buffer_period_size) {
+			JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
+			                DEBUG_COLOR_RED "{%u} "
+			                DEBUG_COLOR_DEFAULT,
+			                current_frames - sync_info[period].jack_frames);
+		}
 	}
 #endif
 
-#if 0
 	/* Latch the clock when audio wakes up before the calculated midi period
 	   start. coming in one frame too early is unfortunately common with
 	   non-rt kernels or missing realtime priveleges.  allow for an extra
@@ -1290,14 +920,10 @@ set_midi_cycle_time(unsigned short period, int nframes)
 	}
 	/* Phase locking lower bound: subtract a partial frame from the start of
 	   the next period (no more than 0.5 to maintian continuity). */
-	else
-#endif
-		if (delta_nsec <
+	else if (delta_nsec <
 		    (sync_info[period].nsec_per_frame * midi_phase_min)) {
-		next_timeref.tv_nsec -=
-			((int)(sync_info[next_period].nsec_per_frame * 0.25));
-			//((int)(sync_info[next_period].nsec_per_period * 
-			//       (timecalc_t)(0.0001220703125)));
+		time_sub_nsecs(&next_timeref,
+		               ((int)(sync_info[next_period].nsec_per_frame * 0.25)));
 		JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
 		                DEBUG_COLOR_LTBLUE "<<" DEBUG_COLOR_BLUE "%d%+d"
 		                DEBUG_COLOR_LTBLUE "<< " DEBUG_COLOR_DEFAULT,
@@ -1315,10 +941,8 @@ set_midi_cycle_time(unsigned short period, int nframes)
 	else if ( (delta_nsec < (sync_info[period].nsec_per_period)) &&
 	          (sync_info[period].jack_wakeup_frame <
 	           sync_info[period].f_buffer_period_size) ) {
-		next_timeref.tv_nsec +=
-			((int)(sync_info[next_period].nsec_per_frame * 0.25));
-			//((int)(sync_info[next_period].nsec_per_period * 
-			//       (timecalc_t)(0.0001220703125)));
+		time_add_nsecs(&next_timeref,
+		               ((int)(sync_info[next_period].nsec_per_frame * 0.25)));
 		JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
 		                DEBUG_COLOR_LTBLUE ">>" DEBUG_COLOR_BLUE "%d%+d"
 		                DEBUG_COLOR_LTBLUE ">> " DEBUG_COLOR_DEFAULT,
@@ -1326,13 +950,9 @@ set_midi_cycle_time(unsigned short period, int nframes)
 	}
 	/* Latch the clock when audio wakes up after the calculated period end. */
 	else {
-		//next_timeref.tv_nsec +=
-		//	(int)(delta_nsec - (sync_info[next_period].nsec_per_frame * 0.5 *
-		//	                    (sync_info[next_period].f_buffer_period_size -
-		//	                     1.0 + midi_phase_max)));
-		next_timeref.tv_nsec +=
-			(int)((sync_info[next_period].nsec_per_frame * 
-			       (sync_info[next_period].f_buffer_period_size - 1.0)));
+		time_add_nsecs(&next_timeref, (int)
+		               ((sync_info[next_period].nsec_per_frame * 
+		                 (sync_info[next_period].f_buffer_period_size - 1.0))));
 		/* Reset nsec_per_frame and nsec_per_period for quick clock resettling
 		   times after xruns or other events that throw off the audio process
 		   thread's scheduling. */
@@ -1345,43 +965,44 @@ set_midi_cycle_time(unsigned short period, int nframes)
 		                DEBUG_COLOR_YELLOW "+++|||%d%+d||| " DEBUG_COLOR_DEFAULT,
 		                sync_info[period].jack_wakeup_frame, cycle_elapsed);
 	}
-
-	/* Advance the timeref by one period for start of the next. */
+    /* Advance the timeref by one period for start of the next. */
 	time_add_nsecs(&next_timeref,
 	               (int)(sync_info[next_period].nsec_per_period));
-	sync_info[next_period].start_time.tv_sec  = next_timeref.tv_sec;
-	sync_info[next_period].start_time.tv_nsec = next_timeref.tv_nsec;
+	time_copy(&(sync_info[next_period].start_time), &next_timeref);
 
 	/* Advance the timeref by another period for end of the next. */
 	time_add_nsecs(&next_timeref,
 	               (int)(sync_info[next_period].nsec_per_period));
-	sync_info[next_period].end_time.tv_sec    = next_timeref.tv_sec;
-	sync_info[next_period].end_time.tv_nsec   = next_timeref.tv_nsec;
+	time_copy(&(sync_info[next_period].end_time), &next_timeref);
 
 	/* Use the same timeref for the start of the period after the next. */
-	next_period = (unsigned short)(next_period + 1) &
-		sync_info[period].period_mask;
-	sync_info[next_period].start_time.tv_sec  = next_timeref.tv_sec;
-	sync_info[next_period].start_time.tv_nsec = next_timeref.tv_nsec;
+	next_period = sync_info[next_period].next;
+	time_copy(&(sync_info[next_period].start_time), &next_timeref);
 
 	/* Advance by one period for end of the period after the next. */
 	time_add_nsecs(&next_timeref,
 	               (int)(sync_info[next_period].nsec_per_period));
-	sync_info[next_period].end_time.tv_sec  = next_timeref.tv_sec;
-	sync_info[next_period].end_time.tv_nsec = next_timeref.tv_nsec;
+	time_copy(&(sync_info[next_period].end_time), &next_timeref);
 
-	sync_info[next_period].jack_frames = current_frames +
-		sync_info[next_period].buffer_period_size +
-		sync_info[next_period].buffer_period_size;
-	sync_info[next_period].jack_current_usecs =
-		(next_usecs - current_usecs) + next_usecs;
+#ifndef WITHOUT_JACK_DLL
+	sync_info[next_period].jack_frames =
+		current_frames + sync_info[next_period].buffer_period_size;
+	sync_info[next_period].jack_current_usecs = next_usecs;
 	sync_info[next_period].jack_next_usecs    =
-		(next_usecs - current_usecs) +
 		(next_usecs - current_usecs) + next_usecs;
+
+	//sync_info[next_period].jack_frames = current_frames +
+	//	sync_info[next_period].buffer_period_size +
+	//	sync_info[next_period].buffer_period_size;
+	//sync_info[next_period].jack_current_usecs =
+	//	(next_usecs - current_usecs) + next_usecs;
+	//sync_info[next_period].jack_next_usecs    =
+	//	(next_usecs - current_usecs) +
+	//	(next_usecs - current_usecs) + next_usecs;
+#endif
 
 	/* return the next period index back to the caller */
-	next_period = (unsigned short)(period + 1) &
-		sync_info[period].period_mask;
+	next_period = sync_info[period].next;
 
 	/* sync_info[] is now set for the next period and will not be written to
 	   again for one full period.  This memory fence helps ensure that the
@@ -1405,10 +1026,7 @@ set_active_sensing_timeout(unsigned short period, unsigned char queue_num)
 	TIMESTAMP     now;
 
 	if (clock_gettime(system_clockid, &(now)) == 0) {
-		sync_info[period].sensing_timeout[queue_num].tv_sec  =
-			(int)now.tv_sec;
-		sync_info[period].sensing_timeout[queue_num].tv_nsec =
-			(int)now.tv_nsec;
+		time_copy(&(sync_info[period].sensing_timeout[queue_num]), &now);
 		time_add_nsecs(&(sync_info[period].sensing_timeout[queue_num]),
 		               300000000);
 		JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
@@ -1431,10 +1049,7 @@ check_active_sensing_timeout(unsigned short period, unsigned char queue_num)
 
 		if (timecmp(&(sync_info[period].sensing_timeout[queue_num]),
 		            &(sync_info[period].end_time), TIME_LE)) {
-
-			sync_info[period].sensing_timeout[queue_num].tv_sec  = 0;
-			sync_info[period].sensing_timeout[queue_num].tv_nsec = 0;
-
+			time_init(&(sync_info[period].sensing_timeout[queue_num]), 0);
 			JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
 			             DEBUG_COLOR_YELLOW "<Z> " DEBUG_COLOR_DEFAULT);
 			return ACTIVE_SENSING_STATUS_TIMEOUT;

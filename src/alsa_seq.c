@@ -29,6 +29,7 @@
 #include <asoundlib.h>
 #include "jamrouter.h"
 #include "timekeeping.h"
+#include "timeutil.h"
 #include "alsa_seq.h"
 #include "mididefs.h"
 #include "midi_event.h"

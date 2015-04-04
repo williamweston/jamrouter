@@ -26,12 +26,13 @@
 #include <ctype.h>
 #include <pthread.h>
 #include <asoundlib.h>
-#ifdef HAVE_JACK_GET_CYCLE_TIMES
-#include <jack.h>
-#include "jack.h"
-#endif
+#ifndef WITHOUT_JACK_DLL
+#include <jack/jack.h>
+#include "jack_dll.h"
+#endif /* !WITHOUT_JACK_DLL */
 #include "jamrouter.h"
 #include "timekeeping.h"
+#include "timeutil.h"
 #include "rawmidi.h"
 #include "mididefs.h"
 #include "midi_event.h"
@@ -1566,13 +1567,19 @@ raw_midi_rx_thread(void *UNUSED(arg))
 		/* Read new MIDI input, starting with first byte. */
 		if (rawmidi_read(rawmidi_info, (unsigned char *) &midi_byte, 1) == 1) {
 
-#ifdef HAVE_JACK_GET_CYCLE_TIMES
-			get_midi_frame_jack_dll(&period, &first_byte_frame);
-#else
-			period           = get_midi_period(&now);
-			first_byte_frame = get_midi_frame(&period, &now,
-			                                  FRAME_FIX_LOWER | FRAME_LIMIT_UPPER);
-#endif
+#ifndef WITHOUT_JACK_DLL
+			if (jack_dll_level > 1) {
+				get_midi_frame_jack_dll(&period, &first_byte_frame);
+			}
+			else {
+#endif /* WITHOUT_JACK_DLL */
+				period           = get_midi_period(&now);
+				first_byte_frame = get_midi_frame(&period, &now,
+				                                  FRAME_FIX_LOWER |
+				                                  FRAME_LIMIT_UPPER);
+#ifndef WITHOUT_JACK_DLL
+			}
+#endif /* WITHOUT_JACK_DLL */
 			last_byte_frame  = first_byte_frame;
 			rx_index         = sync_info[period].rx_index;
 
@@ -1697,13 +1704,19 @@ raw_midi_rx_thread(void *UNUSED(arg))
 			if (out_event->bytes > 0) {
 
 				/* keep track of last byte frame and event span for debugging */
-#ifdef HAVE_JACK_GET_CYCLE_TIMES
-				get_midi_frame_jack_dll(&last_byte_period, &last_byte_frame);
-#else
-				last_byte_period = get_midi_period(&now);
-				last_byte_frame  =
-					get_midi_frame(&last_byte_period, &now, FRAME_FIX_LOWER);
-#endif
+#ifndef WITHOUT_JACK_DLL
+				if (jack_dll_level > 1) {
+					get_midi_frame_jack_dll(&last_byte_period, &last_byte_frame);
+				}
+				else {
+#endif /* !WITHOUT_JACK_DLL */
+					last_byte_period = get_midi_period(&now);
+					last_byte_frame  = get_midi_frame(&last_byte_period, &now,
+					                                  FRAME_FIX_LOWER);
+#ifndef WITHOUT_JACK_DLL
+				}
+#endif /* !WITHOUT_JACK_DLL */
+
 				event_frame_span = (short)
 					( (unsigned short)( sync_info[period].buffer_size -
 					    (rx_index + first_byte_frame) +
@@ -1716,7 +1729,9 @@ raw_midi_rx_thread(void *UNUSED(arg))
 				   bit late.  When the event timespan in frames is longer than
 				   the norm, the same delta correction has also been seen to
 				   help in some cases, and has never been observed to increase
-				   the maximum jitter.  */
+				   the maximum jitter.
+				   TODO: the same end result can be accomplished by changing
+				         the bounds and omitting the first check. */
 				if (jitter_correct_mode > 0) {
 					delta_frames = 0;
 					if ((out_event->bytes > 1) && (out_event->bytes < 8)) {
@@ -1728,17 +1743,14 @@ raw_midi_rx_thread(void *UNUSED(arg))
 							if (first_byte_frame < -delta_frames) {
 								first_byte_frame = (unsigned short)
 									(first_byte_frame + sync_info[period].buffer_period_size);
-								period = (unsigned short)
-									(period + sync_info[period].period_mask)
-									& sync_info[period].period_mask;
+								period = sync_info[period].prev;
 							}
 							first_byte_frame = (unsigned short)(short)
 								((short)(first_byte_frame + event_frame_span) - target_span);
 							if (first_byte_frame >= sync_info[period].buffer_period_size) {
 								first_byte_frame =
 									first_byte_frame & sync_info[period].buffer_period_mask;
-								period = (unsigned short)
-									((period + 1) & sync_info[period].period_mask);
+								period = sync_info[period].next;
 							}
 							JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
 							                DEBUG_COLOR_RED "[%+d] " DEBUG_COLOR_DEFAULT,
@@ -1751,8 +1763,7 @@ raw_midi_rx_thread(void *UNUSED(arg))
 								first_byte_frame = (unsigned short)
 									((short)(first_byte_frame) -
 									 (short)(sync_info[period].buffer_period_size));
-								period = (unsigned short)
-									((period + 1) & sync_info[period].period_mask);
+								period = sync_info[period].next;
 							}
 							JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
 							                DEBUG_COLOR_RED "[%+d] " DEBUG_COLOR_DEFAULT,
@@ -1777,12 +1788,12 @@ raw_midi_rx_thread(void *UNUSED(arg))
 					JAMROUTER_DEBUG(DEBUG_CLASS_ANALYZE,
 					                DEBUG_COLOR_RED "? " DEBUG_COLOR_DEFAULT);
 				}
-#endif
+#endif /* ENABLE_DEBUG */
 #ifndef WITHOUT_JUNO
 				/* translate juno sysex to controllers */
 				translate_from_juno(period, A2J_QUEUE,
 				                    out_event, first_byte_frame, rx_index);
-#endif
+#endif /* !WITHOUT_JUNO */
 			}
 
 			/* queue event. */
@@ -1798,15 +1809,15 @@ raw_midi_rx_thread(void *UNUSED(arg))
 				else {
 					queue_midi_event(period, A2J_QUEUE, out_event,
 					                 first_byte_frame, rx_index, 0);
+					out_event = get_new_midi_event(A2J_QUEUE);
 				}
 
 				JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
-				                DEBUG_COLOR_CYAN "[%d-%d:%d] "
+				                DEBUG_COLOR_CYAN "[%d-%d:%d:"
+				                DEBUG_COLOR_RED "%d" DEBUG_COLOR_CYAN "] "
 				                DEBUG_COLOR_DEFAULT,
 				                first_byte_frame, last_byte_frame,
-				                event_frame_span);
-
-				out_event = get_new_midi_event(A2J_QUEUE);
+				                event_frame_span, period);
 			}
 
 			/* Interleaved realtime events can only be queued _after_ the
@@ -1902,12 +1913,18 @@ raw_midi_tx_thread(void *UNUSED(arg))
 	pthread_cond_broadcast(&midi_tx_ready_cond);
 	pthread_mutex_unlock(&midi_tx_ready_mutex);
 
-#ifdef HAVE_JACK_GET_CYCLE_TIMES
-	get_midi_frame_jack_dll(&period, &cycle_frame);
-#else /* !HAVE_JACK_GET_CYCLE_TIMES */
-	period = get_midi_period(&now);
-#endif /* !HAVE_JACK_GET_CYCLE_TIMES */
-	period = sleep_until_next_period(period, &now);
+#ifndef WITHOUT_JACK_DLL
+	if (jack_dll_level > 2) {
+		get_midi_frame_jack_dll(&period, &cycle_frame);
+		period = sleep_until_next_period_jack_dll(period, &now);
+	}
+	else {
+#endif /* !WITHOUT_JACK_DLL */
+		period = get_midi_period(&now);
+		period = sleep_until_next_period(period, &now);
+#ifndef WITHOUT_JACK_DLL
+	}
+#endif /* !WITHOUT_JACK_DLL */
 	cycle_frame = sync_info[period].buffer_period_size;
 
 	/* MAIN LOOP: read raw midi device and queue events */
@@ -1921,7 +1938,16 @@ raw_midi_tx_thread(void *UNUSED(arg))
 
 			/* sleep (if necessary) until next midi period has started. */
 			last_period = period;
-			period = sleep_until_next_period(period, &now);
+#ifndef WITHOUT_JACK_DLL
+			if (jack_dll_level > 2) {
+				period = sleep_until_next_period_jack_dll(period, &now);
+			}
+			else {
+#endif /* !WITHOUT_JACK_DLL */
+				period = sleep_until_next_period(period, &now);
+#ifndef WITHOUT_JACK_DLL
+			}
+#endif /* !WITHOUT_JACK_DLL */
 		}
 
 		event = dequeue_midi_event(J2A_QUEUE, &last_period, period, cycle_frame);
@@ -2055,15 +2081,34 @@ raw_midi_tx_thread(void *UNUSED(arg))
 
 				/* Handle event if it has bytes that need to be written */
 				if (event->bytes > 0) {
-
 					if (sleep_once) {
-						sleep_until_frame(period, cycle_frame);
+
+#ifndef WITHOUT_JACK_DLL
+						if (jack_dll_level > 2) {
+							sleep_until_frame_jack_dll(period, cycle_frame);
+						}
+						else {
+#endif /* !WITHOUT_JACK_DLL */
+							sleep_until_frame(period, cycle_frame);
+#ifndef WITHOUT_JACK_DLL
+						}
+#endif /* !WITHOUT_JACK_DLL */
 						sleep_once = 0;
 					}
 #ifdef ENABLE_DEBUG
-					end_period = get_midi_period(&now);
-					end_frame = get_midi_frame(&end_period, &now, FRAME_FIX_LOWER);
-#endif
+#ifndef WITHOUT_JACK_DLL
+					if (jack_dll_level > 2) {
+						get_midi_frame_jack_dll(&end_period, &end_frame);
+					}
+					else {
+#endif /* WITHOUT_JACK_DLL */
+						end_period = get_midi_period(&now);
+						end_frame = get_midi_frame(&end_period, &now,
+						                           FRAME_FIX_LOWER);
+#ifndef WITHOUT_JACK_DLL
+					}
+#endif /* WITHOUT_JACK_DLL */
+#endif /* ENABLE_DEBUG */
 					/* Write the event to MIDI hardware */
 					if ( use_running_status &&
 					     (tx_buf[0] == last_running_status) ) {
@@ -2086,7 +2131,7 @@ raw_midi_tx_thread(void *UNUSED(arg))
 					                DEBUG_COLOR_GREEN "[%d%+d] "
 					                DEBUG_COLOR_DEFAULT,
 					                cycle_frame, event_latency);
-#endif
+#endif /* ENABLE_DEBUG */
 					/* optional Tx guard interval between messages */
 					if (event_guard_time_usec > 0) {
 						jamrouter_usleep(event_guard_time_usec);

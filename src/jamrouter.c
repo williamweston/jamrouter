@@ -52,9 +52,9 @@
 /* command line options */
 #define HAS_ARG     1
 #ifdef WITHOUT_JUNO
-# define NUM_OPTS    (36 + 1)
+# define NUM_OPTS    (39 + 1)
 #else
-# define NUM_OPTS    (38 + 1)
+# define NUM_OPTS    (41 + 1)
 #endif
 static struct option long_opts[] = {
 #ifndef WITHOUT_JUNO
@@ -85,7 +85,6 @@ static struct option long_opts[] = {
 	{ "txallnotesoff",   0,       NULL, 'f' },
 	{ "noteonvelocity",  HAS_ARG, NULL, 'n' },
 	{ "noteoffvelocity", HAS_ARG, NULL, 'N' },
-	{ "phase-lock",      HAS_ARG, NULL, 'z' },
 	{ "rx-priority",     HAS_ARG, NULL, 'y' },
 	{ "tx-priority",     HAS_ARG, NULL, 'Y' },
 	{ "debug",           HAS_ARG, NULL, 'd' },
@@ -97,6 +96,10 @@ static struct option long_opts[] = {
 	{ "lash-project",    HAS_ARG, NULL, 'P' },
 	{ "lash-server",     HAS_ARG, NULL, 'S' },
 	{ "lash-id",         HAS_ARG, NULL, 'I' },
+	{ "jackdll1",        0,       NULL, '1' },
+	{ "jackdll2",        0,       NULL, '2' },
+	{ "jackdll3",        0,       NULL, '3' },
+	{ "phase-lock",      HAS_ARG, NULL, 'z' },
 	{ 0,                 0,       NULL, 0 }
 };
 
@@ -132,6 +135,9 @@ int             event_guard_time_usec         = 0;
 int             rx_latency_periods            = 0;
 int             tx_latency_periods            = 0;
 int             jitter_correct_mode           = 0;
+#ifndef WITHOUT_JACK_DLL
+int             jack_dll_level                = 0;
+#endif
 #ifndef WITHOUT_JUNO
 int             translate_juno_sysex          = 0;
 int             echosysex                     = 0;
@@ -200,9 +206,7 @@ showusage(char *argvzero)
 	       " -i, --input-port=       JACK MIDI Input port name.\n"
 	       " -o, --output-port=      JACK MIDI Output port name.\n"
 	       " -y, --rx-priority=      Realtime thread priority for MIDI Rx thread.\n"
-	       " -Y, --tx-priority=      Realtime thread priority for MIDI Tx thread.\n"
-	       " -j, --jitter-correct    Enable experimental Rx jitter correction mode.\n"
-	       " -z, --phase-lock=       JACK wakeup phase in MIDI Rx/Tx period (.06-.94).\n\n"
+	       " -Y, --tx-priority=      Realtime thread priority for MIDI Tx thread.\n\n"
 	       "MIDI Message Translation Options:\n\n"
 	       " -A, --activesensing=    Active-Sensing mode:  on, thru, drop  (default on).\n"
 	       " -R, --runningstatus     When possible, omit Running-Status byte on MIDI Tx.\n"
@@ -214,10 +218,6 @@ showusage(char *argvzero)
 	       " -F, --txrealnoteoff     Send Note-Off for Velocity-0-Note-On on MIDI Tx.\n\n"
 	       " -f, --txallnotesoff     With no notes left in play, translate multiple Note-\n"
 	       "                           Off messages to All-Notes-Off Controller for Tx.\n\n"
-#ifndef WITHOUT_JUNO
-	       " -J, --juno              Enable Juno-106 SysEx <--> Controller translation.\n"
-	       "                           (See " PACKAGE_DATA_DIR "/doc/juno-106.txt).\n\n"
-#endif
 	       " -k, --keymap=           <rx-chan>,<tx-chan>,<controller>\n"
 	       "                           Map MIDI notes to controller on alternate channel.\n"
 	       "                           (Can be repeated once per Rx channel.)\n\n"
@@ -230,10 +230,21 @@ showusage(char *argvzero)
 	       " -e, --echotrans         Echo translated pitchbend and controller messages\n"
 	       "                           to JACK MIDI output port for sequencer recording.\n\n"
 #ifndef WITHOUT_JUNO
+	       "JUNO-106 Translation Options:\n\n"
+	       " -J, --juno              Enable Juno-106 SysEx <--> Controller translation.\n"
+	       "                           (See " PACKAGE_DATA_DIR "/doc/juno-106.txt).\n\n"
 	       " -s, --echosysex         Echo translated Juno-106 SysEx messages\n"
 	       "                           to JACK MIDI output port for sequencer recording.\n\n"
 #endif
-	       "JAMRouter:  JACK <--> ALSA MIDI Router  ver. " PACKAGE_VERSION "\n"
+	       "Experimental Options:\n\n"
+	       " -j, --jitter-correct    Rx jitter correction mode.\n"
+	       " -z, --phase-lock=       JACK wakeup phase in MIDI Rx/Tx period (.06-.94).\n\n"
+#ifndef WITHOUT_JACK_DLL
+	       " -1, --jackdll1          JACK DLL timing level 1:  Sync PLL to DLL only.\n"
+	       " -2, --jackdll2          JACK DLL timing level 2:  JACK DLL Sync and Rx.\n"
+	       " -3, --jackdll3          JACK DLL timing level 3:  JACK DLL Sync and Rx/Tx.\n"
+#endif
+	       "\nJAMRouter:  JACK <--> ALSA MIDI Router  ver. " PACKAGE_VERSION "\n"
 	       "  (C) 2015 William Weston <william.h.weston@gmail.com>,\n"
 	       "Distributed under the terms of the GNU GENERAL Public License, Version 3.\n"
 	       "  (See AUTHORS, LICENSE, and GPL-3.0.txt for details.)\n");
@@ -612,6 +623,17 @@ main(int argc, char **argv)
 				setting_midi_phase_lock = (timecalc_t)(0.9375);
 			}
 			break;
+#ifndef WITHOUT_JACK_DLL
+		case '3':   /* JACK DLL timing level 3 */
+			jack_dll_level++;
+			/* fall-through */
+		case '2':   /* JACK DLL timing level 2 */
+			jack_dll_level++;
+			/* fall-through */
+		case '1':   /* JACK DLL timing level 1 */
+			jack_dll_level++;
+			break;
+#endif
 		case 'k':   /* key to controller mapping */
 			if (optarg != NULL) {
 				if ((tokbuf = alloca(strlen((const char *)optarg) * 4)) == NULL) {
@@ -794,6 +816,7 @@ main(int argc, char **argv)
 	/* init MIDI system based on selected driver */
 	JAMROUTER_DEBUG(DEBUG_CLASS_INIT, "Initializing MIDI:  driver=%s.\n",
 	                midi_driver_names[midi_driver]);
+	init_sync_info(0, 0);
 	init_midi();
 
 	/* initialize JACK audio system based on selected driver */

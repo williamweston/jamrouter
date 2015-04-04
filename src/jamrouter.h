@@ -246,6 +246,9 @@ extern int             event_guard_time_usec;
 extern int             rx_latency_periods;
 extern int             tx_latency_periods;
 extern int             jitter_correct_mode;
+#ifdef HAVE_JACK_GET_CYCLE_TIMES
+extern int             jack_dll_level;
+#endif
 #ifndef WITHOUT_JUNO
 extern int             translate_juno_sysex;
 extern int             echosysex;

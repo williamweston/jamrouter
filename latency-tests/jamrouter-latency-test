@@ -20,7 +20,7 @@ devce_name=''
 latency_args=''
 rx_latency=-1
 tx_latency=-1
-message_size=3
+message_size=2
 result_file=/tmp/latency.$$
 
 # gather command line args
@@ -129,23 +129,23 @@ elif echo -n "$midi_device" | egrep -q '[0-9]+'; then
 fi
 
 # keep track of test parameters to include with results
-jamrouter_args="-M $driver -D $midi_device -d stream -d testing -d timing -F -0 -z $phase_lock -g $guard_time $latency_args"
-sample_rate=`jack_samplerate`
+jamrouter_args="-M $driver -D $midi_device -d stream -d timing -d testing -d analyze -F -0 -g $guard_time -z $phase_lock $latency_args -1"
+sample_rate=`jack_bufsize | cut -f 3 -d '=' | cut -f 2 -d ' '`
 
 # set buffer size accroding to test parameters
 jack_bufsize $buffer_size
 
 echo "Starting JAMRouter:  jamrouter $jamrouter_args"
-jamrouter $jamrouter_args &
-time jack_midi_latency_test -s $test_samples -m $message_size > $result_file 2>&1 &
+~/jamrouter/src/jamrouter $jamrouter_args &
+time /usr/local/bin/jack_midi_latency_test -s $test_samples -m $message_size > $result_file 2>&1 &
 
 # give jamrouter and jack_midi_latency_test a chance to fully start
-sleep 2
+sleep 3
 
 # connect jamrouter <--> jack_midi_latency_test
-jack_connect jack_midi_latency_test${test_inst}:out jamrouter${jamr_inst}:midi_in
+jack_connect /usr/local/bin/jack_midi_latency_test${test_inst}:out jamrouter${jamr_inst}:midi_in
 sleep 1
-jack_connect jamrouter${jamr_inst}:midi_out jack_midi_latency_test${test_inst}:in
+jack_connect jamrouter${jamr_inst}:midi_out /usr/local/bin/jack_midi_latency_test${test_inst}:in
 
 # wait for jack_midi_latency_test to complete
 sleep 1
@@ -166,7 +166,7 @@ echo "Sample Rate:         ${sample_rate}"
 echo "Buffer Size:         ${buffer_size}"
 echo "Rx Latency Periods:  ${rx_latency}"
 echo "Tx Latency Periods:  ${tx_latency}"
-echo "JAMRouter Cmd:       src/jamrouter $jamrouter_args"
+echo "JAMRouter Cmd:       jamrouter $jamrouter_args"
 echo "Latency Test Cmd:    jack_midi_latency_test -s $test_samples -m $message_size"
 echo
 

@@ -29,6 +29,7 @@
 #include <jack.h>
 #endif
 #include "jamrouter.h"
+#include "timeutil.h"
 
 
 #define JAMROUTER_CLOCK_INIT           1111111111
@@ -53,26 +54,10 @@ typedef float timecalc_t;
 typedef double timecalc_t;
 #endif /* (ARCH_BITS == 64) */
 
-#if 0
-struct int_timestamp {
-	int              tv_sec;
-	int              tv_nsec;
-} __attribute__((packed));
-typedef struct int_timestamp INT_TIMESTAMP;
-
-
-union timestamp {
-	struct timespec  ts;
-	INT_TIMESTAMP    int;
-} __attribute__((__transparent_union__));
-
-typedef union timestamp TIMESTAMP;
-#endif
-
-typedef struct timespec TIMESTAMP;
-
 
 typedef struct sync_info {
+	unsigned short   prev;
+	unsigned short   next;
 	unsigned short   rx_index;
 	unsigned short   tx_index;
 	unsigned short   input_index;
@@ -88,6 +73,7 @@ typedef struct sync_info {
 	unsigned short   rx_latency_size;
 	unsigned short   tx_latency_size;
 	signed short     jack_wakeup_frame;
+	short            frames_per_byte;
 	timecalc_t       nsec_per_frame;
 	timecalc_t       nsec_per_period;
 	timecalc_t       f_buffer_period_size;
@@ -100,14 +86,13 @@ typedef struct sync_info {
 	jack_nframes_t   jack_frames;
 	jack_time_t      jack_current_usecs;
 	jack_time_t      jack_next_usecs;
+	timecalc_t       jack_nsec_per_period;
+	timecalc_t       jack_nsec_per_frame;
 #endif
-	short            frames_per_byte;
 } SYNC_INFO;
 
 
 extern volatile SYNC_INFO   sync_info[MAX_BUFFER_PERIODS];
-
-extern clockid_t            system_clockid;
 
 extern timecalc_t           midi_phase_lock;
 extern timecalc_t           midi_phase_min;
@@ -116,22 +101,6 @@ extern timecalc_t           setting_midi_phase_lock;
 
 extern int                  max_event_latency;
 
-
-int timecmp(volatile TIMESTAMP *a,
-            volatile TIMESTAMP *b,
-            unsigned char mode);
-void time_add(volatile TIMESTAMP *a,
-              volatile TIMESTAMP *b);
-void time_sub(volatile TIMESTAMP *a,
-              volatile TIMESTAMP *b);
-void time_add_nsecs(volatile TIMESTAMP *a,
-                    int nsecs);
-void time_sub_nsecs(volatile TIMESTAMP *a,
-                    int nsecs);
-timecalc_t time_nsecs(volatile TIMESTAMP *a);
-
-void jamrouter_usleep(int usecs);
-void jamrouter_nanosleep(long int nsecs);
 
 unsigned short sleep_until_next_period(unsigned short period,
                                        TIMESTAMP *now);
@@ -145,10 +114,6 @@ unsigned short get_midi_period(TIMESTAMP *now);
 unsigned short get_midi_frame(unsigned short *period,
                               TIMESTAMP *now,
                               unsigned char flags);
-#ifdef HAVE_JACK_GET_CYCLE_TIMES
-void get_midi_frame_jack_dll(unsigned short *period,
-                             unsigned short *frame);
-#endif
 TIMESTAMP *get_frame_time(unsigned short period,
                           unsigned short frame,
                           TIMESTAMP *frame_time);

@@ -136,6 +136,29 @@ AC_CHECK_LIB(jack, jack_get_cycle_times,
   [AC_DEFINE_UNQUOTED(HAVE_JACK_GET_CYCLE_TIMES, [1],
   [libjack has jack_get_cycle_times().])])
 
+# JACK w/ DLL timing
+without_jack_dll=0      
+AC_ARG_WITH(jack_dll,
+  [AS_HELP_STRING([--without-jack-dll],
+    [enable JACK DLL timing])],
+  [without_jack_dll=1
+  AC_DEFINE([WITHOUT_JACK_DLL], [], [Build without JACK DLL timing])],
+  true
+)
+
+if test x$without_jack_dll != x1; then
+  PKG_CHECK_MODULES(JACK,
+    jack > 1.9.8,
+    true,
+    [AC_MSG_WARN([jack > 0.9.8 not found. Building without JACK DLL timing.])
+    without_jack_dll=0
+    AC_DEFINE([WITHOUT_JACK_DLL], [], [Build with JACK_DLL timing])],
+    true
+  )
+fi
+
+AM_CONDITIONAL(WITH_JACK_DLL, test x$without_jack_dll != x1)
+
 # LASH
 AC_ARG_WITH(lash,
   [AS_HELP_STRING([--without-lash],
