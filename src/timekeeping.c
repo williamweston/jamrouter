@@ -78,6 +78,8 @@ sleep_until_next_period(unsigned short period, TIMESTAMP *now)
 #endif
 	}
 
+	//period++;
+	//period &= sync_info[period].period_mask;
 	period = sync_info[period].next;
 
 	sync_info[period].jack_wakeup_frame = 0;
@@ -767,15 +769,16 @@ set_midi_cycle_time(unsigned short period, int nframes)
 
 		/* Set buffer period size and calculate new sync variables */
 		for (next_period = 0; next_period < MAX_BUFFER_PERIODS; next_period++) {
-			/* Don't touch current period other than fixing the linked list
-			   "pointers".  Other threads are still using the current period's
-			   old sync_info[].  They will pick up new sync_info[] during the
-			   next period. */
+			/* Don't touch current period other than fixing the indexes.
+			   Other threads are still using the current period's old
+			   sync_info[].  They will pick up new sync_info[] during the next
+			   period. */
 			if (next_period != period) {
 				set_new_period_size(next_period, (unsigned short)(nframes));
 			}
 		}
 		next_period = sync_info[period].next;
+
 		JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
 		                DEBUG_COLOR_YELLOW "@" DEBUG_COLOR_DEFAULT);
 
@@ -783,6 +786,7 @@ set_midi_cycle_time(unsigned short period, int nframes)
 			sync_info[last_period].f_buffer_period_size *
 			(timecalc_t)1000000000.0 /
 			(timecalc_t) sync_info[last_period].sample_rate;
+
 		sync_info[last_period].nsec_per_frame =
 			(sync_info[last_period].nsec_per_period /
 			 sync_info[last_period].f_buffer_period_size);
@@ -894,6 +898,7 @@ set_midi_cycle_time(unsigned short period, int nframes)
 	}
 #endif
 
+#if 0
 	/* Latch the clock when audio wakes up before the calculated midi period
 	   start. coming in one frame too early is unfortunately common with
 	   non-rt kernels or missing realtime priveleges.  allow for an extra
@@ -920,7 +925,9 @@ set_midi_cycle_time(unsigned short period, int nframes)
 	}
 	/* Phase locking lower bound: subtract a partial frame from the start of
 	   the next period (no more than 0.5 to maintian continuity). */
-	else if (delta_nsec <
+	else
+#endif
+	if (delta_nsec <
 		    (sync_info[period].nsec_per_frame * midi_phase_min)) {
 		time_sub_nsecs(&next_timeref,
 		               ((int)(sync_info[next_period].nsec_per_frame * 0.25)));
