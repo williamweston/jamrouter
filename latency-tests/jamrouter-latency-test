@@ -1,9 +1,10 @@
 #!/bin/bash
 
 # first option is required.  rest are optional
-if [ $# -gt 8 -o $# -lt 1 ] ; then
+if [ $# -gt 9 -o $# -lt 1 ] ; then
 	echo "Usage:  $0 <buffer-size> [<phase-lock> <raw-device> <test-samples>"
-	echo "            <byte-guard-time> <message-size> <rx-latency> <tx-latency>]"
+	echo "            <byte-guard-time> <message-size> <rx-latency> <tx-latency>"
+	echo "            -<jack-dll_level]"
 	echo
 	echo "        For <rx-latency> and <tx-latency>, a value of -1 will use the"
 	echo "            JAMRouter defaults, and a value of 0 will use the slightly"
@@ -17,13 +18,24 @@ guard_time=0
 buffer_size=64
 midi_device=hw:1,0
 devce_name=''
+jack_dll_arg=''
 latency_args=''
 rx_latency=-1
 tx_latency=-1
 message_size=2
 result_file=/tmp/latency.$$
 
+#jamrouter_bin=jamrouter
+#jamrouter_bin=/usr/local/bin/jamrouter
+jamrouter_bin=$HOME/jamrouter/src/jamrouter
+
+#latencytest_bin=jack_midi_latency_test
+latencytest_bin=/usr/local/bin/jack_midi_latency_test
+
 # gather command line args
+if [ $# -ge 9 ]; then
+	jack_dll_arg="$9"
+fi
 if [ $# -ge 8 ]; then
 	tx_latency="$8"
 fi
@@ -129,23 +141,23 @@ elif echo -n "$midi_device" | egrep -q '[0-9]+'; then
 fi
 
 # keep track of test parameters to include with results
-jamrouter_args="-M $driver -D $midi_device -d stream -d timing -d testing -d analyze -F -0 -g $guard_time -z $phase_lock $latency_args -1"
-sample_rate=`jack_bufsize | cut -f 3 -d '=' | cut -f 2 -d ' '`
+jamrouter_args="-M $driver -D $midi_device -d stream -d timing -d testing -d analyze -F -0 -g $guard_time -z $phase_lock $latency_args $jack_dll_arg -1"
+sample_rate=`jack_samplerate`
 
 # set buffer size accroding to test parameters
 jack_bufsize $buffer_size
 
 echo "Starting JAMRouter:  jamrouter $jamrouter_args"
-~/jamrouter/src/jamrouter $jamrouter_args &
-time /usr/local/bin/jack_midi_latency_test -s $test_samples -m $message_size > $result_file 2>&1 &
+$jamrouter_bin $jamrouter_args &
+time $latencytest_bin -s $test_samples -m $message_size > $result_file 2>&1 &
 
 # give jamrouter and jack_midi_latency_test a chance to fully start
 sleep 3
 
 # connect jamrouter <--> jack_midi_latency_test
-jack_connect /usr/local/bin/jack_midi_latency_test${test_inst}:out jamrouter${jamr_inst}:midi_in
+jack_connect ${latencytest_bin}${test_inst}:out jamrouter${jamr_inst}:midi_in
 sleep 1
-jack_connect jamrouter${jamr_inst}:midi_out /usr/local/bin/jack_midi_latency_test${test_inst}:in
+jack_connect jamrouter${jamr_inst}:midi_out ${latencytest_bin}${test_inst}:in
 
 # wait for jack_midi_latency_test to complete
 sleep 1

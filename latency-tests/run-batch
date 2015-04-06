@@ -1,34 +1,36 @@
 #!/bin/bash
 
 # pairs of <buffer-size>,<test-samples>
+
+# test down to bufsize 16 for 96000
 #pairs='16,4096 32,2048 64,1024 128,512 256,256 512,128 1024,64 2048,32'
 #pairs='16,8192 32,4096 64,2048 128,1024 256,512 512,256 1024,128 2048,64'
 #pairs='16,16384 32,8192 64,4096 128,2048 256,1024 512,512 1024,256 2048,128'
 #pairs='16,16384 32,8192 64,4096 128,2048 256,1024 512,1024 1024,1024 2048,1024'
+
+# test down to bufsize 32 for all other sample rates
 #pairs='32,8192 64,4096 128,2048 256,1024 512,1024 1024,1024 2048,1024'
-#pairs='32,8192 64,4096 128,2048 256,2048 512,2048 1024,2048 2048,2048'
+pairs='32,8192 64,4096 128,2048 256,2048 512,2048 1024,2048 2048,2048'
 #pairs='32,1024 128,1024 256,1024 512,1024 1024,1024 2048,1024'
 #pairs='16,1024 32,1024 64,1024 128,1024 256,1024 512,1024 1024,1024 2048,1024'
 #pairs='32,2048 64,1024 128,512 256,256 512,128 1024,64 2048,32'
 #pairs='32,4096 64,2048 128,1024 256,512 512,256 1024,128 2048,64'
 #pairs='32,8192 64,4096 128,2048 256,1024 512,512 1024,256 2048,128'
 #pairs='32,16384 64,8192 128,4096 256,2048 512,1024 1024,512 2048,256'
-#pairs='512,128'
-#pairs='2048,1024'
-#pairs='32,8192 64,4096 128,2048 256,1024 512,512'
-pairs='32,1024'
 
+ifaces='/dev/midi1'
 #ifaces='/dev/midi1 /dev/midi2 hw:1,0 hw:2,0 14:0 20:0 24:0'
-ifaces='/dev/midi1 /dev/midi2'
-#ifaces='/dev/midi1'
 
-#phases='0.25 0.50 0.75'
 phases='0.5'
+#phases='0.25 0.50 0.75'
 
-#guardtimes='000 160 320 480 640'
 guardtimes='0'
+#guardtimes='000 160 320 480 640'
 
 messagesize=3
+
+#test_cmd=./jamrouter-latency-test
+test_cmd=$HOME/jamrouter/latency-tests/jamrouter-latency-test
 
 if [ $# != 3 ]; then
 	echo "Usage:  $0 <test-start-num> <test-end-num> <test-dir>"
@@ -60,7 +62,7 @@ for tnum in `seq -w $tstart $tend`; do
 					echo -en "\\033[0;39m"
 					echo -n "___________  ${tnum} ${iface} ${bufsize} ${phase} ${guardtime}  ::  "
 					echo "test.${iface_name}.${phase}.${guardtime}.${samplerate}.${bufsize}.${tnum}.out  ___________"
-					( ./jamrouter-latency-test ${bufsize} ${phase} ${iface} ${samples} ${guardtime} ${messagesize} 0 0 2>&1 ) \
+					( ${test_cmd} ${bufsize} ${phase} ${iface} ${samples} ${guardtime} ${messagesize} 0 0 2>&1 ) \
 						| tee ${tdir}/test.${iface_name}.${phase}.${guardtime}.${samplerate}.${bufsize}.${tnum}.out \
 						| egrep -v "\@" \
 						| cut -f 1-15 -d '!' \
