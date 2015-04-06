@@ -375,6 +375,7 @@ jamrouter_signal_handler(int i)
 	if (midi_tx_thread_p != 0) {
 		pthread_cancel(midi_tx_thread_p);
 	}
+	exit(0);
 }
 
 
