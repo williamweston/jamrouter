@@ -1,0 +1,25 @@
+#!/bin/bash
+
+if [ $# != 2 ]; then
+	echo "Usage:  $0 <frames-per-period> <test-file>"
+	exit 1
+fi
+
+testfile="$2"
+nframes=$1
+
+echo "$testfile"
+echo "  count ln latency"
+
+while read; do
+    frames=`echo $REPLY | perl -p -e 's/^.*\[([0-9]+)\+[0-9]+\].*\[([0-9]+)\-([0-9]+):([0-9]+)\].*$/$1 $2 $4/g'`
+    if echo -n $frames | egrep -q '^[0-9]+ [0-9]+ [0-9]+$'; then
+        iframe=`echo $frames | cut -f 1 -d ' '`
+        oframe=`echo $frames | cut -f 2 -d ' '`
+        len=`echo $frames | cut -f 3 -d ' '`
+		while [ $oframe -gt $iframe ]; do
+			iframe=$[$iframe+$nframes]
+		done
+        echo $len $[(($iframe-$oframe))]
+    fi
+done < "$testfile" | sort | uniq -c
