@@ -368,6 +368,13 @@ jamrouter_signal_handler(int i)
 	fprintf(stderr, "JAMRouter received signal %s.  Shutting down.\n",
 	        strsignal(i));
 	pending_shutdown = 1;
+	sleep(1);
+	if (midi_rx_thread_p != 0) {
+		pthread_cancel(midi_rx_thread_p);
+	}
+	if (midi_tx_thread_p != 0) {
+		pthread_cancel(midi_tx_thread_p);
+	}
 }
 
 
