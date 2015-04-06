@@ -12,6 +12,7 @@ jamrouter_SOURCES  = \
 	mididefs.h \
 	midi_event.c midi_event.h \
 	rawmidi.c rawmidi.h \
+	timeutil.c timeutil.h \
 	timekeeping.c timekeeping.h
 
 if WITH_LASH
@@ -20,6 +21,10 @@ endif
 
 if WITH_JUNO
     jamrouter_SOURCES  += juno.c juno.h
+endif
+
+if WITH_JACK_DLL
+    jamrouter_SOURCES  += jack_dll.c jack_dll.h
 endif
 
 

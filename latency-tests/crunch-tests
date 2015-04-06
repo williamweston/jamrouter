@@ -1,0 +1,18 @@
+#!/bin/bash
+
+if [ $# != 1 ]; then
+	echo "Usage:  $0 <test-dir>"
+	exit 1
+fi
+
+testdir="$1"
+
+bufsizes='64 128 256 512 1024 2048'
+
+reset
+
+for bufsize in $bufsizes; do
+	for testfile in `/bin/ls -1 ${testdir}/test*.${bufsize}.*.out`; do
+		./crunch-test $bufsize $testfile
+	done
+done

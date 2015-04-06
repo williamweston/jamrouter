@@ -653,9 +653,10 @@ set_jack_latency(jack_latency_callback_mode_t mode)
 		                range.min, range.max);
 		break;
 	case JackCaptureLatency:
-		min_adj = sync_info[period].frames_per_byte +
-			(jack_nframes_t)((int)(sync_info[period].rx_latency_size +
-			(unsigned short)(midi_phase_lock)) - 1);
+		min_adj = (jack_nframes_t)
+			((int)(sync_info[period].frames_per_byte +
+			       sync_info[period].rx_latency_size +
+			       (unsigned short)(midi_phase_lock))) - 1;
 		max_adj = min_adj + max_jitter;
 		range.min += min_adj;
 		range.max += max_adj;

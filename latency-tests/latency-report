@@ -6,6 +6,12 @@ fi
 
 results_dir=$1
 
+echo "14:0 Average Latency:"
+egrep '^Average latency' "${results_dir}"/test.14\:0.* | cut -f 3-4 -d : | sort -V | uniq -c
+echo "20:0 Average Latency:"
+egrep '^Average latency' "${results_dir}"/test.20\:0.* | cut -f 3-4 -d : | sort -V | uniq -c
+echo "24:0 Average Latency:"
+egrep '^Average latency' "${results_dir}"/test.24\:0.* | cut -f 3-4 -d : | sort -V | uniq -c
 echo "hw:1,0 Average Latency:"
 egrep '^Average latency' "${results_dir}"/test.hw\:1\,0.* | cut -f 3-4 -d : | sort -V | uniq -c
 echo "hw:2,0 Average Latency:"

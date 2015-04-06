@@ -196,6 +196,9 @@
 /* Version number of package */
 #undef VERSION
 
+/* Build with JACK_DLL timing */
+#undef WITHOUT_JACK_DLL
+
 /* Build without Juno-106 SysEx translation */
 #undef WITHOUT_JUNO
 
