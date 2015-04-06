@@ -25,12 +25,12 @@ tx_latency=-1
 message_size=2
 result_file=/tmp/latency.$$
 
-#jamrouter_bin=jamrouter
+jamrouter_bin=jamrouter
 #jamrouter_bin=/usr/local/bin/jamrouter
-jamrouter_bin=$HOME/jamrouter/src/jamrouter
+#jamrouter_bin=$HOME/jamrouter/src/jamrouter
 
-#latencytest_bin=jack_midi_latency_test
-latencytest_bin=/usr/local/bin/jack_midi_latency_test
+latencytest_bin=jack_midi_latency_test
+#latencytest_bin=/usr/local/bin/jack_midi_latency_test
 
 # gather command line args
 if [ $# -ge 9 ]; then
