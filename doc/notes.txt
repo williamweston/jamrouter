@@ -1,0 +1,53 @@
+JAMRouter Implementation Notes:
+-------------------------------------------------------------------------------
+
+All synchronization between threads is achieved through a lock-free
+sync_info[] ringbuffer.  Sample rate, buffer size and mask, latencies, queue
+indices, MIDI period start and end times, and running decayed averages for
+frame and period time intervals are all accessed through sync_info[], and only
+through sync_info[].  This pattern allows simple checks to be added to the
+timing routines to determine if the timing information in sync_info[period] is
+stale, and for current timing information to be reliably extrapolated from the
+most recently known sync_info[] instead.  Such checks and corrections are
+performed in get_midi_period() and get_midi_frame(), and were an anticipated
+part of the new MIDI transport design.  These two extra bits of logic provide
+flawless synchronization at extremely low buffer sizes, and act as an extra
+safeguard against synchronization failure at any buffer size.  Use of the
+sync_info[] ringbuffer also allows immediate next period response to buffer
+size changes (and sample rate changes once supported by JACK) without
+restarting threads or re-initializing subsystems.
+
+The only part of JAMRouter that is not lock-free is the MWSR debug queue.
+Rather than use the heavy-weight POSIX locking semantics (considered bad
+practice in JACK buffer callback or any audio system buffer callback threads),
+a lighter weight queue using atomic operations was devised.  When updating the
+queue index, writers first spin on a cas token, then update the queue index
+with an atomic add, and finally release the token with an atomic set.  A
+simple cas operation on the queue index alone in this situation is not -rt
+safe, as observed in the debug queue currently in PHASEX.  While cas works
+nearly all of the time, cas alone does not guarantee atomicity.  This can be
+seen when two PHASEX threads obtain the same debug queue index and write to
+the same buffer.  JAMRouter's debug queue simply depends on an extra layer of
+atomic operations in an attempt to minimize the consequences of cas failure.
+While not technically multiple-writer safe, it performs close enough for
+debugging purposes.  The rare but inevitable cas failure observed with the
+debug queues can serve as an example of what not to do with realtime audio and
+MIDI queues.
+
+PHASEX also currently uses the same cas mechanism for atomically updating the
+midi_index and current period's timestamp.  This cas failure was clearly
+identified during JAMRouter development, further motivating the new lock-free
+thread synchronization design.  Also observed in PHASEX is the possibility of
+synchronization failure when the debug code is not compiled in.  The new
+JAMRouter design includes full memory fences in key locations for each thread
+so that realtime behaviour does not mysteriously change when built without
+debugging enabled.  Once this new design is proven in JAMRouter,
+the synchronization and MIDI transport code in PHASEX will be updated as well.
+
+JAMRouter's near-sample-accurate timing is achieved through the use of a PLL
+system that latches onto the audio cycle wakeup phase and calculates
+continuous cycle start and end times based the jitter-free decayed average of
+the time period used by the underlying audio system for callback processing.
+Using this PLL method alone, JAMRouter has already produced a few
+sample-accurate 1024 event jack_midi_latency_test runs.  Timing will improve
+as work of integrating the PLL with JACK's DLL based timing system continues.
