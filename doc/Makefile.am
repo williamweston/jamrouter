@@ -4,7 +4,7 @@ SUBDIRS = latency-tests
 
 dist_docs = \
 	juno-106.txt \
-	midi-clock.txt \
+	notes.txt \
 	release-checklist.txt
 
 dist_doc_DATA = ${dist_docs}

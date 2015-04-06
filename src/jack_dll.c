@@ -82,8 +82,8 @@ get_midi_period_jack_dll(jack_nframes_t current_frame)
 	delta_frames = current_frame - recent_cycle_start;
 	if (sync_info[recent_period].jack_nsec_per_period != 0.0) {
 		elapsed_periods =
-			(unsigned short)(delta_frames /
-			                 sync_info[recent_period].jack_nsec_per_frame);
+			(unsigned short)((timecalc_t)(delta_frames) / (timecalc_t)
+			                 (sync_info[recent_period].jack_nsec_per_frame));
 		period =
 			(unsigned short)((recent_period + elapsed_periods) &
 			                 sync_info[recent_period].period_mask);
