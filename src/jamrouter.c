@@ -633,13 +633,13 @@ main(int argc, char **argv)
 			break;
 #ifndef WITHOUT_JACK_DLL
 		case '3':   /* JACK DLL timing level 3 */
-			jack_dll_level++;
-			/* fall-through */
+			jack_dll_level = 3;
+			break;
 		case '2':   /* JACK DLL timing level 2 */
-			jack_dll_level++;
-			/* fall-through */
+			jack_dll_level = 2;
+			break;
 		case '1':   /* JACK DLL timing level 1 */
-			jack_dll_level++;
+			jack_dll_level = 1;
 			break;
 #endif
 		case 'k':   /* key to controller mapping */
