@@ -161,13 +161,10 @@ dequeue_midi_event(unsigned char queue_num,
 	   against overloading over-the-wire MIDI bandwidth.  Just to be on the
 	   safe side, this extra check and scan will prevent any events from being
 	   skipped over in the queue. */
-	if (period != (((*last_period) + 1) & sync_info[period].period_mask)) {
-		for ( scan_period = (unsigned short)
-			      (period + sync_info[period].period_mask) &
-			      sync_info[period].period_mask;
+	if (period != sync_info[*last_period].next) {
+		for ( scan_period = sync_info[period].prev;
 		      scan_period != period;
-		      scan_period = (unsigned short)
-			      (scan_period + 1) & sync_info[period].period_mask ) {
+		      scan_period = sync_info[scan_period].next ) {
 			tx_index = (queue_num == J2A_QUEUE) ?
 				sync_info[scan_period].tx_index : sync_info[scan_period].output_index;
 			for (j = 0; j < sync_info[period].buffer_period_size; j++) {
@@ -187,8 +184,7 @@ dequeue_midi_event(unsigned char queue_num,
 	/* Control reaches this point if a) a period was not skipped,
 	   and b) there are no events to be dequeued for previous periods.
 	   This should be the normal behaviour 100% of the time. */
-	*last_period = (unsigned short)(period + sync_info[period].period_mask) &
-		sync_info[period].period_mask;
+	*last_period = sync_info[period].prev;
 
 	tx_index = sync_info[period].tx_index;
 	event_queue[queue_num][tx_index + cycle_frame].head = NULL;
