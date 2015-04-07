@@ -65,21 +65,19 @@ int                     max_event_latency     = 0;
 unsigned short
 sleep_until_next_period(unsigned short period, TIMESTAMP *now)
 {
-	TIMESTAMP           sleep_time;
+	TIMESTAMP           sleep_time = { 0, 20000 };
 
 	if ( (clock_gettime(system_clockid, now) == 0) &&
 	     timecmp(now, &(sync_info[period].end_time), TIME_LT) ) {
 		time_copy(&sleep_time, &(sync_info[period].end_time));
 		time_sub(&sleep_time, now);
-#ifdef HAVE_CLOCK_NANOSLEEP
-		clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
-#else
-		nanosleep(sleep_time);
-#endif
 	}
+#ifdef HAVE_CLOCK_NANOSLEEP
+	clock_nanosleep(CLOCK_MONOTONIC, 0, &sleep_time, NULL);
+#else
+	nanosleep(sleep_time);
+#endif
 
-	//period++;
-	//period &= sync_info[period].period_mask;
 	period = sync_info[period].next;
 
 	sync_info[period].jack_wakeup_frame = 0;
@@ -357,13 +355,13 @@ get_midi_frame(unsigned short *period, TIMESTAMP *now, unsigned char flags)
 			frame = 0;
 		}
 		else if (flags & FRAME_FIX_LOWER) {
+			JAMROUTER_DEBUG(DEBUG_CLASS_TESTING,
+			                DEBUG_COLOR_RED "]]%d[[ ", *period);
 			while (frame < 0) {
 				frame =	(short)(frame + (short)
 					        (sync_info[*period].buffer_period_size));
 				*period = sync_info[*period].prev;
 			}
-			JAMROUTER_DEBUG(DEBUG_CLASS_TESTING,
-			                DEBUG_COLOR_RED "]]%d[[ ", *period);
 		}
 	}
 	else if ( (flags & FRAME_LIMIT_UPPER) &&
@@ -437,77 +435,60 @@ init_sync_info_nav(unsigned short period)
 	for (p = 0;
 	     p < sync_info[period].buffer_periods;
 	     p++) {
-		sync_info[p].prev = last_p;
-		sync_info[last_p].next = p;
-		last_p = p;
+			sync_info[p].prev = last_p;
+			sync_info[last_p].next = p;
+			last_p = p;
 	}
 	for (p = sync_info[period].buffer_periods;
 	     p < MAX_BUFFER_PERIODS;
 	     p++) {
-		sync_info[p].prev = last_p;
-		sync_info[last_p].next = 0;
-		last_p = p;
+			sync_info[p].prev = last_p;
+			sync_info[last_p].next = 0;
+			last_p = p;
 	}
-
-	//period = sync_info[period].next;
-
-	for (p = 0; p < MAX_BUFFER_PERIODS; p++) {
-
-		sync_info[p].input_index  =
-			(unsigned short)(p * sync_info[period].buffer_period_size);
-
-		sync_info[p].output_index =
-			(unsigned short)(p * sync_info[period].buffer_period_size);
-
-#ifndef WITHOUT_JACK_DLL
-		if (jack_dll_level > 1) {
-			sync_info[p].rx_index = (unsigned short)
-				((int)((p + (int)(sync_info[p].buffer_periods) +
-				        (int)(sync_info[p].rx_latency_periods)) &
-				       (int)(sync_info[period].period_mask)) *
-				 (int)(sync_info[period].buffer_period_size));
-
-			sync_info[p].tx_index = (unsigned short)
-				((int)((((int)sync_info[p].buffer_periods) -
-				       ((int)(sync_info[p].tx_latency_periods))) &
-				      ((int)(sync_info[period].period_mask))) *
-				 ((int)(sync_info[period].buffer_period_size)));
-		}
-		else {
-#endif
-			/*
-			sync_info[p].rx_index =
-				(unsigned short)(((sync_info[p].output_index) +
-				                  (sync_info[period].buffer_period_size) +
-				                  (sync_info[period].buffer_period_size) +
-				                  (sync_info[period].rx_latency_size)) &
-				                 sync_info[period].buffer_size_mask);
-
-			sync_info[p].tx_index =
-				(unsigned short)(((sync_info[p].input_index) +
-				                  ((sync_info[period].buffer_size) -
-				                   (sync_info[period].buffer_period_size) +
-				                   (sync_info[period].tx_latency_size))) &
-				                 (sync_info[period].buffer_size_mask));
-			*/
-#if OLDCODE
-			sync_info[period].rx_index =
-				(unsigned short)((sync_info[period].output_index +
-				                  sync_info[period].rx_latency_size) &
-				                 sync_info[period].buffer_size_mask);
-
-			sync_info[period].tx_index =
-				(unsigned short)((sync_info[period].input_index +
-				                  (sync_info[period].buffer_size -
-				                   sync_info[period].tx_latency_size)) &
-				                 sync_info[period].buffer_size_mask);
-#endif
-		}
-#ifndef WITHOUT_JACK_DLL
-	}
-#endif
 	sync_info[sync_info[period].period_mask].next = 0;
 
+#if 1
+	for (p = 0; p < MAX_BUFFER_PERIODS; p++) {
+
+		if (p != period) {
+			sync_info[p].input_index  =
+				(unsigned short)(p * sync_info[period].buffer_period_size);
+
+			sync_info[p].output_index =
+				(unsigned short)(p * sync_info[period].buffer_period_size);
+#ifndef WITHOUT_JACK_DLL
+			if (jack_dll_level > 1) {
+				sync_info[p].rx_index = (unsigned short)
+					((int)((p + (int)(sync_info[p].buffer_periods) +
+					        (int)(sync_info[p].rx_latency_periods)) &
+					       (int)(sync_info[period].period_mask)) *
+					 (int)(sync_info[period].buffer_period_size));
+
+				sync_info[p].tx_index = (unsigned short)
+					((int)((((int)sync_info[p].buffer_periods) -
+					        ((int)(sync_info[p].tx_latency_periods))) &
+					       ((int)(sync_info[period].period_mask))) *
+					 ((int)(sync_info[period].buffer_period_size)));
+			}
+			else {
+#endif
+				sync_info[p].rx_index =
+					(unsigned short)((sync_info[p].output_index +
+					                  sync_info[period].rx_latency_size) &
+					                 sync_info[period].buffer_size_mask);
+
+				sync_info[p].tx_index =
+					(unsigned short)((sync_info[p].input_index +
+					                  (sync_info[period].buffer_size -
+					                   sync_info[period].tx_latency_size)) &
+					                 sync_info[period].buffer_size_mask);
+			}
+		}
+#ifndef WITHOUT_JACK_DLL
+	}
+#endif
+#endif
 }
 
 
@@ -556,24 +537,20 @@ set_new_period_size(unsigned short period, unsigned short nframes)
 	}
 
 	sync_info[period].buffer_periods = 4;
-#if 1
 	/* Determine number of buffer periods. */
 	switch (nframes) {
 	case 2048:
 	case 1024:
+	case 512:
+	case 256:
 		/* ignore extra command line latencies for larger buffer sizes. */
 		sync_info[period].rx_latency_periods = 1;
 		sync_info[period].tx_latency_periods = 1;
 		sync_info[period].buffer_periods = 4;
-	case 512:
-	case 256:
-		sync_info[period].buffer_periods = 4;
-		break;
 		/* fall-through */
 	case 128:
 		/* When phase lock brings JACK and MIDI phases too close together
 		   for -rt tolerances, increase rx or tx latency to compensate. */
-#if 0
 		if ( ( ((timecalc_t)(nframes) * setting_midi_phase_lock) <
 		       (sync_info[period].sample_rate / 1500) ) && 
 		     (sync_info[period].rx_latency_periods < 2) ) {
@@ -584,7 +561,6 @@ set_new_period_size(unsigned short period, unsigned short nframes)
 		          (sync_info[period].tx_latency_periods < 2) ) {
 			sync_info[period].tx_latency_periods = 2;
 		}
-#endif
 		sync_info[period].buffer_periods = 4;
 		break;
 	case 64:
@@ -603,7 +579,6 @@ set_new_period_size(unsigned short period, unsigned short nframes)
 		}
 		break;
 	}
-#endif
 
 	/* set buffer size and corresponding mask values. */
 	sync_info[period].period_mask          =
@@ -636,16 +611,36 @@ set_new_period_size(unsigned short period, unsigned short nframes)
 
 	sync_info[period].output_index = (unsigned short)(period * nframes);
 
-	sync_info[period].rx_index =
-		(unsigned short)((sync_info[period].output_index +
-		                  sync_info[period].rx_latency_size) &
-		                 sync_info[period].buffer_size_mask);
+#ifndef WITHOUT_JACK_DLL
+	if (jack_dll_level > 1) {
+		sync_info[period].rx_index = (unsigned short)
+			((int)((period + (int)(sync_info[period].buffer_periods) +
+			        (int)(sync_info[period].rx_latency_periods)) &
+			       (int)(sync_info[period].period_mask)) *
+			 (int)(sync_info[period].buffer_period_size));
 
-	sync_info[period].tx_index =
-		(unsigned short)((sync_info[period].input_index +
-		                  (sync_info[period].buffer_size -
-		                   sync_info[period].tx_latency_size)) &
-		                 sync_info[period].buffer_size_mask);
+		sync_info[period].tx_index = (unsigned short)
+			((int)((((int)sync_info[period].buffer_periods) -
+			        ((int)(sync_info[period].tx_latency_periods))) &
+			       ((int)(sync_info[period].period_mask))) *
+			 ((int)(sync_info[period].buffer_period_size)));
+	}
+	else {
+#endif
+		sync_info[period].rx_index =
+			(unsigned short)((sync_info[period].output_index +
+			                  sync_info[period].rx_latency_size) &
+			                 sync_info[period].buffer_size_mask);
+
+		sync_info[period].tx_index =
+			(unsigned short)((sync_info[period].input_index +
+			                  (sync_info[period].buffer_size -
+			                   sync_info[period].tx_latency_size)) &
+			                 sync_info[period].buffer_size_mask);
+
+#ifndef WITHOUT_JACK_DLL
+		}
+#endif
 
 	/* nsec_per_period and nsec_per_frame depend on period size. */
 	sync_info[period].nsec_per_period  =
@@ -872,11 +867,12 @@ set_midi_cycle_time(unsigned short period, int nframes)
 				set_new_period_size(next_period, (unsigned short)(nframes));
 			}
 		}
-		init_sync_info_nav(sync_info[period].prev);
+		//init_sync_info_nav(sync_info[period].prev);
+		init_sync_info_nav(period);
 		next_period = sync_info[period].next;
 
 		JAMROUTER_DEBUG(DEBUG_CLASS_TIMING,
-		                DEBUG_COLOR_YELLOW "@" DEBUG_COLOR_DEFAULT);
+		                DEBUG_COLOR_YELLOW "%d@" DEBUG_COLOR_DEFAULT, period);
 
 		sync_info[period].nsec_per_period =
 			sync_info[period].f_buffer_period_size *
