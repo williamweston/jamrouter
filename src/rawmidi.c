@@ -1950,6 +1950,10 @@ raw_midi_tx_thread(void *UNUSED(arg))
 #endif /* !WITHOUT_JACK_DLL */
 		}
 
+		if (cycle_frame >= sync_info[period].buffer_period_size) {
+			cycle_frame = 0;
+		}
+
 		event = dequeue_midi_event(J2A_QUEUE, &last_period, period, cycle_frame);
 
 		/* Look ahead for optional translation of note on/off events */
