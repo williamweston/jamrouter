@@ -82,7 +82,7 @@ jack_process_buffer_no_audio(jack_nframes_t nframes, void *UNUSED(arg))
 	static jack_nframes_t  last_nframes     = 0;
 	unsigned short         new_period;
 
-	if (!jack_running || pending_shutdown || (jack_audio_client == NULL)) {
+	if ((jack_audio_client == NULL)) {
 		return 0;
 	}
 
@@ -253,7 +253,7 @@ jack_client_registration_handler(const char *name, int reg, void *UNUSED(arg))
 		}
 
 		/* tx */
-		if (jack_midi_input_ports != NULL) {
+		if (jack_midi_output_ports != NULL) {
 			head = cur = jack_midi_output_ports;
 			while (cur != NULL) {
 				if ((cur->name != NULL) &&
@@ -348,7 +348,7 @@ jack_port_registration_handler(jack_port_id_t port_id,
 	/* when a port registers, add it to the list */
 	else {
 		if (!jack_port_is_mine(jack_audio_client, port) &&
-		    ((flags & JackPortIsOutput) || (flags & JackPortIsInput)) &&
+		    (flags & (JackPortIsOutput | JackPortIsInput)) &&
 		    (strcmp(jack_port_type(port), JACK_DEFAULT_MIDI_TYPE) == 0)) {
 			if ((new = malloc(sizeof(JACK_PORT_INFO))) == NULL) {
 				jamrouter_shutdown("Out of Memory!\n");
@@ -1018,19 +1018,38 @@ jack_start(void)
 int
 jack_stop(void)
 {
+	JACK_PORT_INFO  *cur;
 	jack_client_t   *tmp_client;
 
 	if ((jack_audio_client != NULL) && jack_running && (jack_thread_p) != 0) {
-		tmp_client          = jack_audio_client;
-		jack_audio_client   = NULL;
-		jack_thread_p       = 0;
-		midi_input_port     = NULL;
-		midi_output_port    = NULL;
+		cur = jack_midi_input_ports;
+		while (cur != NULL) {
+			if (cur->connected) {
+				jack_disconnect(jack_audio_client, cur->name, jack_port_name(midi_input_port));
+				JAMROUTER_WARN("Disconnected port '%s'...\n", cur->name);
+				cur->connected = 0;
+			}
+			cur = cur->next;
+		}
+		cur = jack_midi_output_ports;
+		while (cur != NULL) {
+			if (cur->connected) {
+				jack_disconnect(jack_audio_client, cur->name, jack_port_name(midi_output_port));
+				JAMROUTER_WARN("Disconnected port '%s'...\n", cur->name);
+				cur->connected = 0;
+			}
+			cur = cur->next;
+		}
 
+		tmp_client          = jack_audio_client;
 #ifdef JACK_DEACTIVATE_BEFORE_CLOSE
 		jack_deactivate(tmp_client);
 #endif
 		jack_client_close(tmp_client);
+		jack_audio_client   = NULL;
+		jack_thread_p       = 0;
+		midi_input_port     = NULL;
+		midi_output_port    = NULL;
 	}
 
 	jack_running = 0;
@@ -1064,7 +1083,6 @@ jack_watchdog_cycle(void)
 {
 	JACK_PORT_INFO  *cur;
 	int             save_and_quit = 0;
-	int             j             = 0;
 
 	if ((jack_audio_client == NULL) || !jack_running || (jack_thread_p == 0)) {
 		jack_running = 0;
@@ -1087,36 +1105,64 @@ jack_watchdog_cycle(void)
 		}
 	}
 #endif /* HAVE_JACK_SESSION_H */
-	for (cur = jack_midi_input_ports; j < 2; cur = jack_midi_output_ports) {
-		while (cur != NULL) {
-			if (cur->connect_request) {
-				jack_connect(jack_audio_client, cur->name, jack_port_name(midi_input_port));
-				if (jack_port_connected_to(midi_input_port, cur->name)) {
-					cur->connected          = 1;
-					cur->connect_request    = 0;
-					cur->disconnect_request = 0;
-				}
-				else {
-					cur->connected          = 0;
-					cur->connect_request    = 0;
-					cur->disconnect_request = 0;
-				}
+	cur = jack_midi_input_ports;
+	while (cur != NULL) {
+		if (cur->connect_request) {
+			jack_connect(jack_audio_client, cur->name, jack_port_name(midi_input_port));
+			if (jack_port_connected_to(midi_input_port, cur->name)) {
+				cur->connected          = 1;
+				cur->connect_request    = 0;
+				cur->disconnect_request = 0;
 			}
-			else if (cur->disconnect_request) {
-				jack_disconnect(jack_audio_client, cur->name, jack_port_name(midi_input_port));
-				if (jack_port_connected_to(midi_input_port, cur->name)) {
-					cur->connected          = 1;
-					cur->connect_request    = 0;
-					cur->disconnect_request = 1;
-				}
-				else {
-					cur->connected = 0;
-					cur->connect_request    = 0;
-					cur->disconnect_request = 0;
-				}
+			else {
+				cur->connected          = 0;
+				cur->connect_request    = 0;
+				cur->disconnect_request = 0;
 			}
-			cur = cur->next;
 		}
-		j++;
+		else if (cur->disconnect_request) {
+			jack_disconnect(jack_audio_client, cur->name, jack_port_name(midi_input_port));
+			if (jack_port_connected_to(midi_input_port, cur->name)) {
+				cur->connected          = 1;
+				cur->connect_request    = 0;
+				cur->disconnect_request = 1;
+			}
+			else {
+				cur->connected          = 0;
+				cur->connect_request    = 0;
+				cur->disconnect_request = 0;
+			}
+		}
+		cur = cur->next;
+	}
+	cur = jack_midi_output_ports;
+	while (cur != NULL) {
+		if (cur->connect_request) {
+			jack_connect(jack_audio_client, cur->name, jack_port_name(midi_output_port));
+			if (jack_port_connected_to(midi_output_port, cur->name)) {
+				cur->connected          = 1;
+				cur->connect_request    = 0;
+				cur->disconnect_request = 0;
+			}
+			else {
+				cur->connected          = 0;
+				cur->connect_request    = 0;
+				cur->disconnect_request = 0;
+			}
+		}
+		else if (cur->disconnect_request) {
+			jack_disconnect(jack_audio_client, cur->name, jack_port_name(midi_output_port));
+			if (jack_port_connected_to(midi_output_port, cur->name)) {
+				cur->connected          = 1;
+				cur->connect_request    = 0;
+				cur->disconnect_request = 1;
+			}
+			else {
+				cur->connected          = 0;
+				cur->connect_request    = 0;
+				cur->disconnect_request = 0;
+			}
+		}
+		cur = cur->next;
 	}
 }
