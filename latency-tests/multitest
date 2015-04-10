@@ -1,0 +1,206 @@
+#!/bin/bash
+
+# first option is required.  rest are optional
+if [ $# -gt 2 -o $# -lt 2 ] ; then
+	echo "Usage:  $0 <num-tests> <test-dir>"
+	exit 1
+fi
+
+# set driver and device name based on device designation
+driver='generic'
+midi_device1='/dev/midi1'
+midi_device2='/dev/midi2'
+device1_name=`cat /proc/asound/cards | grep '^ 1' | cut -c 23-80`
+device2_name=`cat /proc/asound/cards | grep '^ 2' | cut -c 23-80`
+
+# defaults without supplied args
+phase_lock=0.125
+guard_time=0
+buffer_size=64
+jack_dll_arg='-j1'
+#jack_dll_arg='-j'
+latency_args=''
+rx_latency=-1
+tx_latency=-1
+message_size=3
+
+buffer_sizes='32 64 128 256 512 1024 2048'
+#test_sizes='16 32 64 128 256 512 1024 2048'
+test_sizes='16'
+#test_sizes='100'
+
+#jamrouter_bin=jamrouter
+#jamrouter_bin=/usr/local/bin/jamrouter
+jamrouter_bin=$HOME/jamrouter/src/jamrouter
+
+#latencytest_bin=jack_midi_latency_test
+latencytest_bin=/usr/local/bin/jack_midi_latency_test
+
+# gather command line args
+if [ $# -ge 4 ]; then
+	midi_device2="$4"
+fi
+if [ $# -ge 3 ]; then
+	midi_device1="$3"
+fi
+if [ $# -ge 2 ]; then
+	test_dir="$2"
+fi
+if [ $# -ge 1 ]; then
+	num_tests="$1"
+	max_test=$[$num_tests-1]
+fi
+
+if [ ! -d $test_dir ]; then
+	mkdir $test_dir
+fi
+
+sample_rate=`jack_samplerate`
+# set default latency testing latencies if 0 specified
+if [ $rx_latency -eq 0 ]; then
+	if [ $sample_rate -gt 48000 ]; then
+		case $buffer_size in
+			16)
+				rx_latency=5
+				;;
+			32)
+				rx_latency=3
+				;;
+			64)
+				rx_latency=2
+				;;
+			128)
+				rx_latency=1
+				;;
+			256|512|1024|2048)
+				rx_latency=1
+				;;
+		esac
+	else
+		case $buffer_size in
+			16)
+				rx_latency=3
+				;;
+			32)
+				rx_latency=2
+				;;
+			64|128|256|512|1024|2048)
+				rx_latency=1
+				;;
+		esac
+	fi
+fi
+if [ $tx_latency -eq 0 ]; then
+	if  [ $buffer_size -eq 16 ]; then
+		tx_latency=2
+	else
+		tx_latency=1
+	fi
+fi
+
+# set rx latency args for non-jamrouter-default values
+if [ $rx_latency -eq -1 ]; then
+	rx_latency='(default)'
+elif [ $rx_latency -gt 0 ]; then
+	latency_args="-x $rx_latency"
+fi
+
+# set tx latency args for non-jamrouter-default values
+if [ $tx_latency -eq -1 ]; then
+	tx_latency='(default)'
+elif [ $tx_latency -gt 0 ]; then
+	latency_args="$latency_args -X $tx_latency"
+fi
+
+# keep track of test parameters to include with results
+jamrouter_args="-M $driver -F -0 -g $guard_time $latency_args $jack_dll_arg"
+
+echo "Starting JAMRouter1:  jamrouter -D $midi_device1 $jamrouter_args"
+$jamrouter_bin -D $midi_device1 $jamrouter_args &
+
+sleep 1
+
+echo "Starting JAMRouter2:  jamrouter -D $midi_device2 $jamrouter_args"
+$jamrouter_bin -D $midi_device2 $jamrouter_args &
+
+device1=`echo $midi_device1 | sed -e 's/\//_/g'`
+device2=`echo $midi_device2 | sed -e 's/\//_/g'`
+
+for test_num in `seq -w 000 $max_test`; do
+
+	for buffer_size in $buffer_sizes; do
+
+		# set buffer size accroding to test parameters
+		jack_bufsize $buffer_size
+
+		sleep 5
+
+		for test_size in $test_sizes; do
+
+			result_file1="${test_dir}/test.${device1}.${sample_rate}.${buffer_size}.${test_size}.${test_num}"
+			result_file2="${test_dir}/test.${device2}.${sample_rate}.${buffer_size}.${test_size}.${test_num}"
+			(
+				echo "MIDI Device:         ${midi_device1}  ${device_name1}"
+				echo "MIDI Driver:         ${midi_driver}"
+				echo "Phase Lock:          ${phase_lock}"
+				echo "Sample Rate:         ${sample_rate}"
+				echo "Buffer Size:         ${buffer_size}"
+				echo "Rx Latency Periods:  ${rx_latency}"
+				echo "Tx Latency Periods:  ${tx_latency}"
+				echo "JAMRouter Cmd:       jamrouter -D $midi_device1 $jamrouter_args"
+				echo "Latency Test Cmd:    jack_midi_latency_test -s $test_samples -m $message_size"
+				echo
+			) > $result_file1
+
+			(
+				echo "MIDI Device:         ${midi_device2}  ${device_name2}"
+				echo "MIDI Driver:         ${midi_driver}"
+				echo "Phase Lock:          ${phase_lock}"
+				echo "Sample Rate:         ${sample_rate}"
+				echo "Buffer Size:         ${buffer_size}"
+				echo "Rx Latency Periods:  ${rx_latency}"
+				echo "Tx Latency Periods:  ${tx_latency}"
+				echo "JAMRouter Cmd:       jamrouter -D $midi_device2 $jamrouter_args"
+				echo "Latency Test Cmd:    jack_midi_latency_test -s $test_samples -m $message_size"
+				echo
+			) > $result_file2
+
+			$latencytest_bin -s $test_size -m $message_size >> $result_file1 2>&1 &
+			$latencytest_bin -s $test_size -m $message_size >> $result_file2 2>&1 &
+
+			# give jack_midi_latency_test a chance to fully start
+			sleep 5
+
+			# connect jamrouter <--> jack_midi_latency_test
+			jack_connect ${latencytest_bin}:out jamrouter:midi_in
+			jack_connect ${latencytest_bin}-01:out jamrouter2:midi_in
+			sleep 1
+			jack_connect jamrouter:midi_out ${latencytest_bin}:in
+			jack_connect jamrouter2:midi_out ${latencytest_bin}-01:in
+
+			# wait for jack_midi_latency_test to complete
+			sleep 1
+			wait %3
+			wait %4
+
+			# output test results
+			echo -en "\\033[0;39m"
+			frames1=`grep -h ^Peak $result_file1 | sed -e 's/^Peak MIDI jitter:.*\([0-9].[0-9][0-9][0-9]\) ms (\([0-9]*\) frames)$/\2/g'`
+			frames2=`grep -h ^Peak $result_file2 | sed -e 's/^Peak MIDI jitter:.*\([0-9].[0-9][0-9][0-9]\) ms (\([0-9]*\) frames)$/\2/g'`
+			average1=`grep -h '^Average latency:' $result_file1 | sed -e 's/^Average latency:.*\([0-9].[0-9][0-9][0-9]\) ms (\([0-9\.]*\) frames)$/\2/g'`
+			average2=`grep -h '^Average latency:' $result_file2 | sed -e 's/^Average latency:.*\([0-9].[0-9][0-9][0-9]\) ms (\([0-9\.]*\) frames)$/\2/g'`
+
+			echo "test$test_num:	Sample Rate: $sample_rate	Max Jitter: $frames1 / $frames2 frames"
+			echo " Size: $test_size	Buffer Size: $buffer_size  	Avg Latency: $average1 / $average2 frames"
+		done
+	done
+done
+
+# send SIGHUP to jamrouter to shutdown
+kill -HUP %1 > /dev/null 2>&1
+kill -HUP %2 > /dev/null 2>&1
+wait %1
+wait %2
+
+echo
+echo -en "\\033[0;39m"
