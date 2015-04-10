@@ -300,7 +300,6 @@ get_midi_period(TIMESTAMP *now)
 		period =
 			(unsigned short)((recent_period + elapsed_periods) &
 			                 sync_info[recent_period].period_mask);
-		}
 		//JAMROUTER_DEBUG(DEBUG_CLASS_TESTING, DEBUG_COLOR_RED "}}%d{{ ", period);
 	}
 	else {
