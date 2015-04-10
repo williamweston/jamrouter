@@ -879,6 +879,7 @@ Experimental Options:
  -1, --jackdll1          JACK DLL timing level 1:  Sync PLL to DLL only.
  -2, --jackdll2          JACK DLL timing level 2:  JACK DLL Sync and Rx.
  -3, --jackdll3          JACK DLL timing level 3:  JACK DLL Sync and Rx/Tx.
+ -4, --jackdll4          JACK DLL timing level 4:  DLL only.  No PLL.
 
 
 Examples:
