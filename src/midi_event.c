@@ -340,11 +340,6 @@ queue_midi_event(unsigned short         period,
 		queue_event->state = EVENT_STATE_FREE;
 	}
 
-	/* This memory fence is only an added safety and can be removed when it is
-	   determined that the other mfence instructions are in the proper
-	   locations for each thread to prevent catastrophic memory reordering. */
-	   asm volatile ("mfence; # read/write fence" : : : "memory");
-
 	/* TODO: move most of the work into a real_queue_midi_event() to be used
 	   internally by the event queueing system, allowing active sensing checks
 	   to be made in a single place (here). */
@@ -531,15 +526,15 @@ track_note_off(unsigned char    queue_num,
 		                channel, midi_note, keys_in_play[queue_num]);
 	}
 	/* ignore the note in the note off message if found in list */
-	if ((prev != NULL) && (prev->midi_key == midi_note)) {
-		cur = keylist_head[queue_num][channel];
-		while (cur != NULL) {
-			if (cur->midi_key != midi_note) {
-				prev = cur;
-			}
-			cur = cur->next;
-		}
-	}
+	//if ((prev != NULL) && (prev->midi_key == midi_note)) {
+	//	cur = keylist_head[queue_num][channel];
+	//	while (cur != NULL) {
+	//		if (cur->midi_key != midi_note) {
+	//			prev = cur;
+	//		}
+	//		cur = cur->next;
+	//	}
+	//}
 	if (prev != NULL) {
 		/* set last/current keys in play respective of notes still held */
 		last_key[queue_num][channel] = prev->midi_key;
