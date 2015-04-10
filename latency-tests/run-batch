@@ -3,22 +3,23 @@
 # pairs of <buffer-size>,<test-samples>
 
 # test down to bufsize 16 for 96000
+#pairs='16,1024 32,1024 64,1024 128,1024 256,1024 512,1024 1024,1024 2048,1024'
 #pairs='16,4096 32,2048 64,1024 128,512 256,256 512,128 1024,64 2048,32'
 #pairs='16,8192 32,4096 64,2048 128,1024 256,512 512,256 1024,128 2048,64'
 #pairs='16,16384 32,8192 64,4096 128,2048 256,1024 512,512 1024,256 2048,128'
 #pairs='16,16384 32,8192 64,4096 128,2048 256,1024 512,1024 1024,1024 2048,1024'
 
 # test down to bufsize 32 for all other sample rates
+pairs='32,1024 64,1024 128,1024 256,1024 512,1024 1024,1024 2048,1024'
 #pairs='32,8192 64,4096 128,2048 256,1024 512,1024 1024,1024 2048,1024'
 #pairs='32,8192 64,4096 128,2048 256,2048 512,2048 1024,2048 2048,2048'
-pairs='32,1024 128,1024 256,1024 512,1024 1024,1024 2048,1024'
-#pairs='16,1024 32,1024 64,1024 128,1024 256,1024 512,1024 1024,1024 2048,1024'
+#pairs='32,1024 128,1024 256,1024 512,1024 1024,1024 2048,1024'
 #pairs='32,2048 64,1024 128,512 256,256 512,128 1024,64 2048,32'
 #pairs='32,4096 64,2048 128,1024 256,512 512,256 1024,128 2048,64'
 #pairs='32,8192 64,4096 128,2048 256,1024 512,512 1024,256 2048,128'
 #pairs='32,16384 64,8192 128,4096 256,2048 512,1024 1024,512 2048,256'
 
-ifaces='/dev/midi1'
+ifaces='/dev/midi1 /dev/midi2'
 #ifaces='/dev/midi1 /dev/midi2 hw:1,0 hw:2,0 14:0 20:0 24:0'
 
 phases='0.5'
@@ -26,6 +27,8 @@ phases='0.5'
 
 guardtimes='0'
 #guardtimes='000 160 320 480 640'
+
+dll_levels='-1'
 
 messagesize=3
 
@@ -40,6 +43,10 @@ fi
 tstart=$1
 tend=$2
 tdir=$3
+
+if [ ! -d $tdir ]; then
+	mkdir $tdir
+fi
 
 if  [ $messagesize -eq 3 ]; then
 	regex='(^Peak)|(\})|(\]\])|(\|)|(\? )|(XRUN)|(<[0123456789ABCDEF]+>)|([ABCDEF][0123456789ABCDEF] )|(\! [0-9]+ \! [0-9]+ \! [0-9]+ \!)'
@@ -57,20 +64,22 @@ for tnum in `seq -w $tstart $tend`; do
 		samples=`echo $pair | sed -e 's/^.*,//g'`
 		for phase in $phases; do
 			for guardtime in $guardtimes; do
-				for iface in $ifaces; do
-					iface_name=`echo $iface | sed -e 's/\//_/g'`
-					echo -en "\\033[0;39m"
-					echo -n "___________  ${tnum} ${iface} ${bufsize} ${phase} ${guardtime}  ::  "
-					echo "test.${iface_name}.${phase}.${guardtime}.${samplerate}.${bufsize}.${tnum}.out  ___________"
-					( ${test_cmd} ${bufsize} ${phase} ${iface} ${samples} ${guardtime} ${messagesize} 0 0 2>&1 ) \
-						| tee ${tdir}/test.${iface_name}.${phase}.${guardtime}.${samplerate}.${bufsize}.${tnum}.out \
-						| egrep -v "\@" \
-						| cut -f 1-15 -d '!' \
-						| egrep "${regex}" \
-						| sed -e 's/latency-tests\/jamrouter-latency-test.*Hangup.*$//g'
-					echo -en "\\033[0;39m"
-					echo -n "^^^^^^^^^^^  ${tnum} ${iface} ${bufsize} ${phase} ${guardtime}  ::  "
-					echo "test.${iface_name}.${phase}.${guardtime}.${samplerate}.${bufsize}.${tnum}.out  ^^^^^^^^^^^";
+				for dll_level in $dll_levels; do
+					for iface in $ifaces; do
+						iface_name=`echo $iface | sed -e 's/\//_/g'`
+						echo -en "\\033[0;39m"
+						echo -n "___________  ${tnum} ${iface} ${bufsize} ${phase} ${guardtime} ${dll_level} ::  "
+						echo "test.${iface_name}.${phase}.${guardtime}.${samplerate}.${bufsize}.${tnum}${dll_level}.out  ___________"
+						( ${test_cmd} ${bufsize} ${phase} ${iface} ${samples} ${guardtime} ${messagesize} 0 0 $dll_level 2>&1 ) \
+							| tee ${tdir}/test.${iface_name}.${phase}.${guardtime}.${samplerate}.${bufsize}.${tnum}${dll_level}.out \
+							| egrep -v "\@" \
+							| cut -f 1-15 -d '!' \
+							| egrep "${regex}" \
+							| sed -e 's/latency-tests\/jamrouter-latency-test.*Hangup.*$//g'
+						echo -en "\\033[0;39m"
+						echo -n "^^^^^^^^^^^  ${tnum} ${iface} ${bufsize} ${phase} ${guardtime} ${dll_level}  ::  "
+						echo "test.${iface_name}.${phase}.${guardtime}.${samplerate}.${bufsize}.${tnum}${dll_level}.out  ^^^^^^^^^^^";
+					done;
 				done;
 			done;
 		done;

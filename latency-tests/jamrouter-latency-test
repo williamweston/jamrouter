@@ -4,7 +4,7 @@
 if [ $# -gt 9 -o $# -lt 1 ] ; then
 	echo "Usage:  $0 <buffer-size> [<phase-lock> <raw-device> <test-samples>"
 	echo "            <byte-guard-time> <message-size> <rx-latency> <tx-latency>"
-	echo "            -<jack-dll_level]"
+	echo "            -<jack-dll_level>]"
 	echo
 	echo "        For <rx-latency> and <tx-latency>, a value of -1 will use the"
 	echo "            JAMRouter defaults, and a value of 0 will use the slightly"
@@ -18,11 +18,13 @@ guard_time=0
 buffer_size=64
 midi_device=hw:1,0
 devce_name=''
-jack_dll_arg=''
+jack_dll_arg='-j -4'
 latency_args=''
-rx_latency=-1
-tx_latency=-1
+rx_latency=0
+tx_latency=0
 message_size=2
+#debug_args='-d stream -d timing -d testing -d analyze'
+debug_args=''
 result_file=/tmp/latency.$$
 
 jamrouter_bin=jamrouter
@@ -61,29 +63,44 @@ if [ $# -ge 1 ]; then
 	buffer_size="$1"
 fi
 
+sample_rate=`jack_samplerate`
 # set default latency testing latencies if 0 specified
 if [ $rx_latency -eq 0 ]; then
-	case $buffer_size in
-		16)
-			rx_latency=5
-			;;
-		32)
-			rx_latency=3
-			;;
-		64)
-			rx_latency=2
-			;;
-		128)
-			rx_latency=1
-			;;
-		256|512|1024|2048)
-			rx_latency=1
-			;;
-	esac
+	if [ $sample_rate -gt 48000 ]; then
+		case $buffer_size in
+			16)
+				rx_latency=5
+				;;
+			32)
+				rx_latency=3
+				;;
+			64)
+				rx_latency=2
+				;;
+			128)
+				rx_latency=1
+				;;
+			256|512|1024|2048)
+				rx_latency=1
+				;;
+		esac
+	else
+		case $buffer_size in
+			16)
+				rx_latency=3
+				;;
+			32)
+				rx_latency=2
+				;;
+			64|128|256|512|1024|2048)
+				rx_latency=1
+				;;
+		esac
+	fi
 fi
 if [ $tx_latency -eq 0 ]; then
 	if  [ $buffer_size -eq 16 ]; then
-		tx_latency=2
+		tx_latency=1
 	else
 		tx_latency=1
 	fi
@@ -141,8 +158,7 @@ elif echo -n "$midi_device" | egrep -q '[0-9]+'; then
 fi
 
 # keep track of test parameters to include with results
-jamrouter_args="-M $driver -D $midi_device -d stream -d timing -d testing -d analyze -F -0 -g $guard_time -z $phase_lock $latency_args $jack_dll_arg -1"
-sample_rate=`jack_samplerate`
+jamrouter_args="-M $driver -D $midi_device $debug_args -F -0 -g $guard_time -z $phase_lock $latency_args $jack_dll_arg"
 
 # set buffer size accroding to test parameters
 jack_bufsize $buffer_size
@@ -152,7 +168,7 @@ $jamrouter_bin $jamrouter_args &
 time $latencytest_bin -s $test_samples -m $message_size > $result_file 2>&1 &
 
 # give jamrouter and jack_midi_latency_test a chance to fully start
-sleep 3
+sleep 8
 
 # connect jamrouter <--> jack_midi_latency_test
 jack_connect ${latencytest_bin}${test_inst}:out jamrouter${jamr_inst}:midi_in
@@ -163,8 +179,8 @@ jack_connect jamrouter${jamr_inst}:midi_out ${latencytest_bin}${test_inst}:in
 sleep 1
 wait %2
 
-# send SIGHUP to jamrouter to shutdown
-kill -HUP %1 > /dev/null 2>&1
+# send signal to jamrouter to shut down
+kill -USR1 %1 > /dev/null 2>&1
 wait %1
 
 # output test parameters
