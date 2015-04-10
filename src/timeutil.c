@@ -178,21 +178,36 @@ time_sub_nsecs(volatile TIMESTAMP *a, int nsecs) {
 timecalc_t
 time_nsecs(volatile TIMESTAMP *a)
 {
-	return (((timecalc_t)(a->tv_sec) * (timecalc_t)(1000000000)) +
+	return (((timecalc_t)(a->tv_sec) * (timecalc_t)(1000000000.0)) +
 	        (timecalc_t)(a->tv_nsec));
+}
+
+
+/*****************************************************************************
+ * get_delta_nsecs()
+ *
+ * Returns the floating point difference in nanoseconds between
+ * two timestamps (usually now and process callback start time).
+ *****************************************************************************/
+timecalc_t
+time_delta_nsecs(volatile TIMESTAMP *now, volatile TIMESTAMP *start)
+{
+	return (timecalc_t)((((timecalc_t)(now->tv_sec) -
+	                      (timecalc_t)(start->tv_sec)) *
+	                     (timecalc_t)(1000000000.0)) +
+	                    ((timecalc_t)(now->tv_nsec) -
+	                     (timecalc_t)(start->tv_nsec)));
 }
 
 
 /*****************************************************************************
  * time_copy()
  *****************************************************************************/
-TIMESTAMP *
+void
 time_copy(volatile TIMESTAMP *dest, volatile TIMESTAMP *src)
 {
 	dest->tv_sec  = src->tv_sec;
 	dest->tv_nsec = src->tv_nsec;
-
-	return (TIMESTAMP *)dest;
 }
 
 

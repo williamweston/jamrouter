@@ -88,6 +88,7 @@ typedef struct sync_info {
 	jack_time_t      jack_next_usecs;
 	timecalc_t       jack_nsec_per_period;
 	timecalc_t       jack_nsec_per_frame;
+	timecalc_t       jack_error_nsecs;
 #endif
 } SYNC_INFO;
 

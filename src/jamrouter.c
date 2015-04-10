@@ -52,9 +52,9 @@
 /* command line options */
 #define HAS_ARG     1
 #ifdef WITHOUT_JUNO
-# define NUM_OPTS    (39 + 1)
+# define NUM_OPTS    (40 + 1)
 #else
-# define NUM_OPTS    (41 + 1)
+# define NUM_OPTS    (42 + 1)
 #endif
 static struct option long_opts[] = {
 #ifndef WITHOUT_JUNO
@@ -99,6 +99,7 @@ static struct option long_opts[] = {
 	{ "jackdll1",        0,       NULL, '1' },
 	{ "jackdll2",        0,       NULL, '2' },
 	{ "jackdll3",        0,       NULL, '3' },
+	{ "jackdll4",        0,       NULL, '4' },
 	{ "phase-lock",      HAS_ARG, NULL, 'z' },
 	{ 0,                 0,       NULL, 0 }
 };
@@ -243,6 +244,7 @@ showusage(char *argvzero)
 	       " -1, --jackdll1          JACK DLL timing level 1:  Sync PLL to DLL only.\n"
 	       " -2, --jackdll2          JACK DLL timing level 2:  JACK DLL Sync and Rx.\n"
 	       " -3, --jackdll3          JACK DLL timing level 3:  JACK DLL Sync and Rx/Tx.\n"
+	       " -4, --jackdll4          JACK_DLL timing level 4:  JACK DLL only.  No PLL.\n"
 #endif
 	       "\nJAMRouter:  JACK <--> ALSA MIDI Router  ver. " PACKAGE_VERSION "\n"
 	       "  (C) 2015 William Weston <william.h.weston@gmail.com>,\n"
@@ -368,6 +370,10 @@ jamrouter_signal_handler(int i)
 	fprintf(stderr, "JAMRouter received signal %s.  Shutting down.\n",
 	        strsignal(i));
 	pending_shutdown = 1;
+	stop_midi_tx();
+	stop_midi_rx();
+	stop_jack_audio();
+	output_pending_debug();
 	sleep(1);
 	if (midi_rx_thread_p != 0) {
 		pthread_cancel(midi_rx_thread_p);
@@ -375,6 +381,7 @@ jamrouter_signal_handler(int i)
 	if (midi_tx_thread_p != 0) {
 		pthread_cancel(midi_tx_thread_p);
 	}
+	output_pending_debug();
 	exit(0);
 }
 
@@ -632,6 +639,9 @@ main(int argc, char **argv)
 			}
 			break;
 #ifndef WITHOUT_JACK_DLL
+		case '4':   /* JACK DLL timing level 4 */
+			jack_dll_level = 4;
+			break;
 		case '3':   /* JACK DLL timing level 3 */
 			jack_dll_level = 3;
 			break;
@@ -847,12 +857,10 @@ main(int argc, char **argv)
 	snprintf(thread_name, 16, "jamrouter%c-main", ('0' + jamrouter_instance));
 	pthread_setname_np(pthread_self(), thread_name);
 
-	/* start MIDI threads */
-	start_midi_tx();
+	/* start MIDI Rx/Tx threads. */
 	start_midi_rx();
-
-	/* wait until midi threads are ready */
 	wait_midi_rx_start();
+	start_midi_tx();
 	wait_midi_tx_start();
 
 	/* debug thread not needed once watchdog is running */

@@ -68,9 +68,11 @@ void time_add_nsecs(volatile TIMESTAMP *a,
 void time_sub_nsecs(volatile TIMESTAMP *a,
                     int nsecs);
 timecalc_t time_nsecs(volatile TIMESTAMP *a);
+timecalc_t time_delta_nsecs(volatile TIMESTAMP *now,
+                            volatile TIMESTAMP *start);
 
-TIMESTAMP *time_copy(volatile TIMESTAMP *dest,
-                     volatile TIMESTAMP *src);
+void time_copy(volatile TIMESTAMP *dest,
+               volatile TIMESTAMP *src);
 void time_init(volatile TIMESTAMP *ts,
                long int nsecs);
 
