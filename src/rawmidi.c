@@ -1735,9 +1735,8 @@ raw_midi_rx_thread(void *UNUSED(arg))
 				if (jitter_correct_mode > 0) {
 					delta_frames = 0;
 					if ((out_event->bytes > 1) && (out_event->bytes < 8)) {
-						target_span = (short)
-							((int)(out_event->bytes - 1) *
-							 (int)(sync_info[period].frames_per_byte));
+						target_span = ((short)(out_event->bytes - 1) *
+						               (sync_info[period].frames_per_byte));
 						delta_frames = (short)(event_frame_span - target_span);
 						if (delta_frames < 0) {
 							if (first_byte_frame < -delta_frames) {
@@ -1756,9 +1755,9 @@ raw_midi_rx_thread(void *UNUSED(arg))
 							                DEBUG_COLOR_RED "[%+d] " DEBUG_COLOR_DEFAULT,
 							                delta_frames);
 						}
-						else if ((delta_frames > 0) && (delta_frames < 5)) {
-							first_byte_frame = (unsigned short)(short)
-								((short)(first_byte_frame + event_frame_span) - target_span);
+						else if ((delta_frames > 1) && (delta_frames < 5)) {
+							first_byte_frame = first_byte_frame +
+								((unsigned short)(delta_frames) >> 1);
 							if (first_byte_frame >= sync_info[period].buffer_period_size) {
 								first_byte_frame = (unsigned short)
 									((short)(first_byte_frame) -
