@@ -271,11 +271,12 @@ start_jack_audio(void)
 void
 wait_jack_audio_start(void)
 {
-		pthread_mutex_lock(&jack_audio_ready_mutex);
-		if (!jack_audio_ready) {
-			pthread_cond_wait(&jack_audio_ready_cond, &jack_audio_ready_mutex);
-		}
-		pthread_mutex_unlock(&jack_audio_ready_mutex);
+	pthread_mutex_lock(&jack_audio_ready_mutex);
+	if (!jack_audio_ready) {
+		pthread_cond_wait(&jack_audio_ready_cond, &jack_audio_ready_mutex);
+	}
+	pthread_mutex_unlock(&jack_audio_ready_mutex);
+	sleep(1);
 }
 
 
