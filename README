@@ -1,6 +1,6 @@
-jamrouter-0.2.1:
+jamrouter-0.2.2:
 -------------------------------------------------------------------------------
-JAMRouter:  JACK <-> ALSA MIDI Router v0.2.1
+JAMRouter:  JACK <-> ALSA MIDI Router v0.2.2
 -------------------------------------------------------------------------------
 
 JAMRouter is the best thing since sliced bread for routing MIDI events
@@ -657,6 +657,22 @@ PERFORMANCE TUNING GUIDELINES:
     predetermined values and consistently brings jitter testing scores
     down by 1-2 frames, and in some cases, provides occasional
     sample-accurate test runs.
+
+* JACK DLL Timing Modes (-1, -2, -3, -4):
+
+  JACK DLL based timing is experimental and has only been partialy
+  completed at this point, These timing modes are only implemented for
+  the Raw MIDI drivers at this point.  To maintain current functionality,
+  JACK DLL timing is being implemented in levels that can be tested
+  individually.  Currently, JAMRouter offers the best timing performance
+  with level 1, which is the default as of version 0.2.2.  Levels 2-4 are
+  intermediary steps to the final solution, and do not offer any timing
+  improvements.  Currnet levels are:
+
+  -1:  Sync PLL phase to JACK DLL phase. (best timing / current default.)
+  -2:  Sync PLL to DLL and use JACK generated timing numbers for Rx.
+  -3:  Sync PLL to DLL and use JACK generated timing numbers for Rx/Tx.
+  -4:  JACK DLL timing only.  PLL calculations for comparison only.
 
 
 -------------------------------------------------------------------------------

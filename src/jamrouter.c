@@ -137,7 +137,7 @@ int             rx_latency_periods            = 0;
 int             tx_latency_periods            = 0;
 int             jitter_correct_mode           = 0;
 #ifndef WITHOUT_JACK_DLL
-int             jack_dll_level                = 0;
+int             jack_dll_level                = 1;
 #endif
 #ifndef WITHOUT_JUNO
 int             translate_juno_sysex          = 0;
