@@ -297,8 +297,7 @@ jack_process_midi_out(unsigned short period, jack_nframes_t nframes)
 	jack_midi_data_t        *buffer;
 	unsigned short          cycle_frame;
 	unsigned short          j;
-	unsigned short          last_period =
-		((unsigned short)(period + sync_info[period].period_mask) & sync_info[period].period_mask);
+	unsigned short          last_period = sync_info[period].prev;
 
 	jack_midi_clear_buffer(port_buf);
 
