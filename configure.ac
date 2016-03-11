@@ -577,7 +577,8 @@ AC_CONFIG_FILES([
 	Makefile
     doc/Makefile
     doc/latency-tests/Makefile
-	scripts/Makefile
+    man/Makefile
+    scripts/Makefile
 	src/Makefile
 	jamrouter.spec
 ])

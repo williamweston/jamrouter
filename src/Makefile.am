@@ -23,10 +23,6 @@ if WITH_JUNO
     jamrouter_SOURCES  += juno.c juno.h
 endif
 
-if WITH_JACK_DLL
-    jamrouter_SOURCES  += jack_dll.c jack_dll.h
-endif
-
 
 AM_CFLAGS       = @JAMROUTER_CFLAGS@
 AM_CPPFLAGS     = $(EXTRA_CPPFLAGS) @JAMROUTER_CPPFLAGS@

@@ -26,10 +26,6 @@
 #include <ctype.h>
 #include <pthread.h>
 #include <asoundlib.h>
-#ifndef WITHOUT_JACK_DLL
-#include <jack/jack.h>
-#include "jack_dll.h"
-#endif /* !WITHOUT_JACK_DLL */
 #include "jamrouter.h"
 #include "timekeeping.h"
 #include "timeutil.h"
@@ -1567,19 +1563,10 @@ raw_midi_rx_thread(void *UNUSED(arg))
 		/* Read new MIDI input, starting with first byte. */
 		if (rawmidi_read(rawmidi_info, (unsigned char *) &midi_byte, 1) == 1) {
 
-#ifndef WITHOUT_JACK_DLL
-			if (jack_dll_level > 1) {
-				get_midi_frame_jack_dll(&period, &first_byte_frame);
-			}
-			else {
-#endif /* WITHOUT_JACK_DLL */
-				period           = get_midi_period(&now);
-				first_byte_frame = get_midi_frame(&period, &now,
-				                                  FRAME_FIX_LOWER |
-				                                  FRAME_LIMIT_UPPER);
-#ifndef WITHOUT_JACK_DLL
-			}
-#endif /* WITHOUT_JACK_DLL */
+			period           = get_midi_period(&now);
+			first_byte_frame = get_midi_frame(&period, &now,
+			                                  FRAME_FIX_LOWER |
+			                                  FRAME_LIMIT_UPPER);
 			last_byte_frame  = first_byte_frame;
 			rx_index         = sync_info[period].rx_index;
 
@@ -1704,18 +1691,9 @@ raw_midi_rx_thread(void *UNUSED(arg))
 			if (out_event->bytes > 0) {
 
 				/* keep track of last byte frame and event span for debugging */
-#ifndef WITHOUT_JACK_DLL
-				if (jack_dll_level > 1) {
-					get_midi_frame_jack_dll(&last_byte_period, &last_byte_frame);
-				}
-				else {
-#endif /* !WITHOUT_JACK_DLL */
-					last_byte_period = get_midi_period(&now);
-					last_byte_frame  = get_midi_frame(&last_byte_period, &now,
-					                                  FRAME_FIX_LOWER);
-#ifndef WITHOUT_JACK_DLL
-				}
-#endif /* !WITHOUT_JACK_DLL */
+				last_byte_period = get_midi_period(&now);
+				last_byte_frame  = get_midi_frame(&last_byte_period, &now,
+				                                  FRAME_FIX_LOWER);
 
 				event_frame_span = (short)
 					( (unsigned short)( sync_info[period].buffer_size -
@@ -1912,18 +1890,9 @@ raw_midi_tx_thread(void *UNUSED(arg))
 	pthread_cond_broadcast(&midi_tx_ready_cond);
 	pthread_mutex_unlock(&midi_tx_ready_mutex);
 
-#ifndef WITHOUT_JACK_DLL
-	if (jack_dll_level > 2) {
-		get_midi_frame_jack_dll(&period, &cycle_frame);
-		period = sleep_until_next_period_jack_dll(period, &now);
-	}
-	else {
-#endif /* !WITHOUT_JACK_DLL */
-		period = get_midi_period(&now);
-		period = sleep_until_next_period(period, &now);
-#ifndef WITHOUT_JACK_DLL
-	}
-#endif /* !WITHOUT_JACK_DLL */
+	period = get_midi_period(&now);
+	period = sleep_until_next_period(period, &now);
+
 	cycle_frame = sync_info[period].buffer_period_size;
 
 	/* MAIN LOOP: read raw midi device and queue events */
@@ -1937,16 +1906,7 @@ raw_midi_tx_thread(void *UNUSED(arg))
 
 			/* sleep (if necessary) until next midi period has started. */
 			last_period = period;
-#ifndef WITHOUT_JACK_DLL
-			if (jack_dll_level > 2) {
-				period = sleep_until_next_period_jack_dll(period, &now);
-			}
-			else {
-#endif /* !WITHOUT_JACK_DLL */
-				period = sleep_until_next_period(period, &now);
-#ifndef WITHOUT_JACK_DLL
-			}
-#endif /* !WITHOUT_JACK_DLL */
+			period = sleep_until_next_period(period, &now);
 		}
 
 		if (cycle_frame >= sync_info[period].buffer_period_size) {
@@ -2085,33 +2045,15 @@ raw_midi_tx_thread(void *UNUSED(arg))
 				/* Handle event if it has bytes that need to be written */
 				if (event->bytes > 0) {
 					if (sleep_once) {
-
-#ifndef WITHOUT_JACK_DLL
-						if (jack_dll_level > 2) {
-							sleep_until_frame_jack_dll(period, cycle_frame);
-						}
-						else {
-#endif /* !WITHOUT_JACK_DLL */
-							sleep_until_frame(period, cycle_frame);
-#ifndef WITHOUT_JACK_DLL
-						}
-#endif /* !WITHOUT_JACK_DLL */
+						sleep_until_frame(period, cycle_frame);
 						sleep_once = 0;
 					}
 #ifdef ENABLE_DEBUG
-#ifndef WITHOUT_JACK_DLL
-					if (jack_dll_level > 2) {
-						get_midi_frame_jack_dll(&end_period, &end_frame);
-					}
-					else {
-#endif /* WITHOUT_JACK_DLL */
-						end_period = get_midi_period(&now);
-						end_frame = get_midi_frame(&end_period, &now,
-						                           FRAME_FIX_LOWER);
-#ifndef WITHOUT_JACK_DLL
-					}
-#endif /* WITHOUT_JACK_DLL */
+					end_period = get_midi_period(&now);
+					end_frame = get_midi_frame(&end_period, &now,
+					                           FRAME_FIX_LOWER);
 #endif /* ENABLE_DEBUG */
+
 					/* Write the event to MIDI hardware */
 					if ( use_running_status &&
 					     (tx_buf[0] == last_running_status) ) {

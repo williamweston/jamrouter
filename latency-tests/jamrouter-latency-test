@@ -18,7 +18,7 @@ guard_time=0
 buffer_size=64
 midi_device=hw:1,0
 devce_name=''
-jack_dll_arg='-j -4'
+timing_arg='-1'
 latency_args=''
 rx_latency=0
 tx_latency=0
@@ -27,16 +27,16 @@ message_size=2
 debug_args=''
 result_file=/tmp/latency.$$
 
-jamrouter_bin=jamrouter
+#jamrouter_bin=jamrouter
 #jamrouter_bin=/usr/local/bin/jamrouter
-#jamrouter_bin=$HOME/jamrouter/src/jamrouter
+jamrouter_bin=$HOME/jamrouter/src/jamrouter
 
-latencytest_bin=jack_midi_latency_test
-#latencytest_bin=/usr/local/bin/jack_midi_latency_test
+#latencytest_bin=jack_midi_latency_test
+latencytest_bin=/usr/local/bin/jack_midi_latency_test
 
 # gather command line args
 if [ $# -ge 9 ]; then
-	jack_dll_arg="$9"
+	timing_arg="$9"
 fi
 if [ $# -ge 8 ]; then
 	tx_latency="$8"
@@ -92,7 +92,10 @@ if [ $rx_latency -eq 0 ]; then
 			32)
 				rx_latency=2
 				;;
-			64|128|256|512|1024|2048)
+			64)
+				rx_latency=2
+				;;
+			128|256|512|1024|2048)
 				rx_latency=1
 				;;
 		esac
@@ -158,7 +161,7 @@ elif echo -n "$midi_device" | egrep -q '[0-9]+'; then
 fi
 
 # keep track of test parameters to include with results
-jamrouter_args="-M $driver -D $midi_device $debug_args -F -0 -g $guard_time -z $phase_lock $latency_args $jack_dll_arg"
+jamrouter_args="-M $driver -D $midi_device $debug_args -F -0 -g $guard_time -z $phase_lock $latency_args $timing_arg"
 
 # set buffer size accroding to test parameters
 jack_bufsize $buffer_size
@@ -168,7 +171,7 @@ $jamrouter_bin $jamrouter_args &
 time $latencytest_bin -s $test_samples -m $message_size > $result_file 2>&1 &
 
 # give jamrouter and jack_midi_latency_test a chance to fully start
-sleep 8
+sleep 5
 
 # connect jamrouter <--> jack_midi_latency_test
 jack_connect ${latencytest_bin}${test_inst}:out jamrouter${jamr_inst}:midi_in

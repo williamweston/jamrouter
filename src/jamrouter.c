@@ -52,9 +52,9 @@
 /* command line options */
 #define HAS_ARG     1
 #ifdef WITHOUT_JUNO
-# define NUM_OPTS    (40 + 1)
+# define NUM_OPTS    (36 + 1)
 #else
-# define NUM_OPTS    (42 + 1)
+# define NUM_OPTS    (38 + 1)
 #endif
 static struct option long_opts[] = {
 #ifndef WITHOUT_JUNO
@@ -96,10 +96,6 @@ static struct option long_opts[] = {
 	{ "lash-project",    HAS_ARG, NULL, 'P' },
 	{ "lash-server",     HAS_ARG, NULL, 'S' },
 	{ "lash-id",         HAS_ARG, NULL, 'I' },
-	{ "jackdll1",        0,       NULL, '1' },
-	{ "jackdll2",        0,       NULL, '2' },
-	{ "jackdll3",        0,       NULL, '3' },
-	{ "jackdll4",        0,       NULL, '4' },
 	{ "phase-lock",      HAS_ARG, NULL, 'z' },
 	{ 0,                 0,       NULL, 0 }
 };
@@ -136,9 +132,6 @@ int             event_guard_time_usec         = 0;
 int             rx_latency_periods            = 0;
 int             tx_latency_periods            = 0;
 int             jitter_correct_mode           = 0;
-#ifndef WITHOUT_JACK_DLL
-int             jack_dll_level                = 1;
-#endif
 #ifndef WITHOUT_JUNO
 int             translate_juno_sysex          = 0;
 int             echosysex                     = 0;
@@ -240,12 +233,7 @@ showusage(char *argvzero)
 	       "Experimental Options:\n\n"
 	       " -j, --jitter-correct    Rx jitter correction mode.\n"
 	       " -z, --phase-lock=       JACK wakeup phase in MIDI Rx/Tx period (.06-.94).\n\n"
-#ifndef WITHOUT_JACK_DLL
-	       " -1, --jackdll1          JACK DLL timing level 1:  Sync PLL to DLL only.\n"
-	       " -2, --jackdll2          JACK DLL timing level 2:  JACK DLL Sync and Rx.\n"
-	       " -3, --jackdll3          JACK DLL timing level 3:  JACK DLL Sync and Rx/Tx.\n"
-	       " -4, --jackdll4          JACK_DLL timing level 4:  JACK DLL only.  No PLL.\n"
-#endif
+
 	       "\nJAMRouter:  JACK <--> ALSA MIDI Router  ver. " PACKAGE_VERSION "\n"
 	       "  (C) 2015 William Weston <william.h.weston@gmail.com>,\n"
 	       "Distributed under the terms of the GNU GENERAL Public License, Version 3.\n"
@@ -638,20 +626,6 @@ main(int argc, char **argv)
 				setting_midi_phase_lock = (timecalc_t)(0.9375);
 			}
 			break;
-#ifndef WITHOUT_JACK_DLL
-		case '4':   /* JACK DLL timing level 4 */
-			jack_dll_level = 4;
-			break;
-		case '3':   /* JACK DLL timing level 3 */
-			jack_dll_level = 3;
-			break;
-		case '2':   /* JACK DLL timing level 2 */
-			jack_dll_level = 2;
-			break;
-		case '1':   /* JACK DLL timing level 1 */
-			jack_dll_level = 1;
-			break;
-#endif
 		case 'k':   /* key to controller mapping */
 			if (optarg != NULL) {
 				if ((tokbuf = alloca(strlen((const char *)optarg) * 4)) == NULL) {

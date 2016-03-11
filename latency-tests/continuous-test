@@ -15,19 +15,19 @@ device1_name=`cat /proc/asound/cards | grep '^ 1' | cut -c 23-80`
 phase_lock=0.5
 guard_time=0
 buffer_size=64
-jack_dll_arg='-1 -j'
-#jack_dll_arg='-j'
+timing_args='-j'
 latency_args=''
 rx_latency=2
-tx_latency=-1
+tx_latency=1
 message_size=3
 
-buffer_sizes='32 64 128 256 512 1024 2048'
-#buffer_sizes='1024'
-#test_sizes='32 64 128 256 512 1024 2048'
-test_sizes='128'
+buffer_sizes='64'
+test_sizes='32 64 128 256 512 1024 2048'
+#buffer_sizes='16 32 64 128 256 512 1024 2048'
+#test_sizes='16'
 
-debug_args='-d stream -d timing -d testing -d analyze'
+debug_args='-d stream -d timing -d testing -d full'
+#debug_args=''
 
 #jamrouter_bin=jamrouter
 #jamrouter_bin=/usr/local/bin/jamrouter
@@ -81,7 +81,10 @@ if [ $rx_latency -eq 0 ]; then
 			32)
 				rx_latency=2
 				;;
-			64|128|256|512|1024|2048)
+			64)
+				rx_latency=2
+				;;
+			128|256|512|1024|2048)
 				rx_latency=1
 				;;
 		esac
@@ -110,12 +113,13 @@ elif [ $tx_latency -gt 0 ]; then
 fi
 
 # keep track of test parameters to include with results
-jamrouter_args="-M $driver -F -0 -g $guard_time $latency_args $debug_args $jack_dll_arg"
+jamrouter_args="-M $driver -F -0 -g $guard_time -z $phase_lock $latency_args $debug_args $timing_args"
+#jamrouter_args="-M $driver -F -0 -g $guard_time $latency_args $debug_args $timing_args"
 
 echo "Starting JAMRouter:  jamrouter -D $midi_device1 $jamrouter_args"
 $jamrouter_bin -D $midi_device1 $jamrouter_args &
 
-sleep 1
+sleep 5
 
 device1=`echo $midi_device1 | sed -e 's/\//_/g'`
 
@@ -126,7 +130,7 @@ for test_num in `seq -w 000 $max_test`; do
 		# set buffer size accroding to test parameters
 		jack_bufsize $buffer_size
 
-		sleep 5
+		sleep 2
 
 		for test_size in $test_sizes; do
 
@@ -147,7 +151,7 @@ for test_num in `seq -w 000 $max_test`; do
 			$latencytest_bin -s $test_size -m $message_size >> $result_file1 2>&1 &
 
 			# give jack_midi_latency_test a chance to fully start
-			sleep 3
+			sleep 5
 
 			# connect jamrouter <--> jack_midi_latency_test
 			jack_connect ${latencytest_bin}:out jamrouter:midi_in
@@ -164,7 +168,7 @@ for test_num in `seq -w 000 $max_test`; do
 			average1=`grep -h '^Average latency:' $result_file1 | sed -e 's/^Average latency:.*\([0-9].[0-9][0-9][0-9]\) ms (\([0-9\.]*\) frames)$/\2/g'`
 
 			echo "test$test_num:	Sample Rate: $sample_rate	Max Jitter: $frames1 frames"
-			echo " Size: $test_size	Buffer Size: $buffer_size	Avg Latency: $average1 frames"
+			echo " Size: $test_size	Buffer Size: $buffer_size 	Avg Latency: $average1 frames"
 		done
 	done
 done

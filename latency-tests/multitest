@@ -17,8 +17,7 @@ device2_name=`cat /proc/asound/cards | grep '^ 2' | cut -c 23-80`
 phase_lock=0.125
 guard_time=0
 buffer_size=64
-jack_dll_arg='-j1'
-#jack_dll_arg='-j'
+timing_arg='-j'
 latency_args=''
 rx_latency=-1
 tx_latency=-1
@@ -113,7 +112,7 @@ elif [ $tx_latency -gt 0 ]; then
 fi
 
 # keep track of test parameters to include with results
-jamrouter_args="-M $driver -F -0 -g $guard_time $latency_args $jack_dll_arg"
+jamrouter_args="-M $driver -F -0 -g $guard_time $latency_args $timing_arg"
 
 echo "Starting JAMRouter1:  jamrouter -D $midi_device1 $jamrouter_args"
 $jamrouter_bin -D $midi_device1 $jamrouter_args &

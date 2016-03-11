@@ -1,4 +1,4 @@
-%define		jamrouter_version       0.2.0
+%define		jamrouter_version       0.2.3
 %define     gitversion              @PACKAGE_VERSION@
 
 %ifarch %ix86 i386 i486 i586 i686 athlon geode ia32e atom
@@ -81,11 +81,15 @@ CFLAGS="$RPM_OPT_FLAGS" %configure \
 
 %files
 %defattr(-,root,root,-)
-%doc README INSTALL LICENSE AUTHORS GPL-3.0.txt ChangeLog TODO doc/juno-106.txt doc/midi-clock.txt doc/latency-tests
+%doc README INSTALL LICENSE AUTHORS GPL-3.0.txt ChangeLog TODO doc/juno-106.txt doc/notes.txt doc/release-checklist.txt doc/latency-tests
 %{_bindir}/jamrouter
+%{_mandir}/man1/jamrouter.1.gz
 
 
 %changelog
+* Thu Mar 10 2016  William Weston <william.h.weston@gmail.com> - 0.2.3
+- Added manual page for 0.2.3.
+
 * Thu Mar 26 2015  William Weston <william.h.weston@gmail.com> - 0.2.0
 - Updated included docs for 0.2.0.
 

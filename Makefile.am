@@ -1,6 +1,7 @@
 ## Process this file with automake to produce Makefile.in
 
-SUBDIRS = src scripts doc
+SUBDIRS = src scripts doc man
+DIST_SUBDIRS = $(SUBDIRS)
 
 dist_doc_DATA = \
 	README \

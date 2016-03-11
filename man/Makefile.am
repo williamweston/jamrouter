@@ -1,2 +1,3 @@
-man1_MANS = jamrouter.1
-dist_man_MANS = ${man1_MANS}
+man_MANS = jamrouter.1
+EXTRA_DIST = $(man_MANS)
+#dist_man_MANS = ${man_MANS}

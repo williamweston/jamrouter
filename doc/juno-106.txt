@@ -52,7 +52,7 @@ JAMRouter <--> Juno-106 MIDI Implementation Details:
 ------------------------------------------------------------------------------
 As the Juno-106 was being developed in parallel with the MIDI-1.0 spec in
 1983-1984, the engineers at Roland decided to implement most of the
-parameters changes through SysEx and not standard MIDI controllers.
+parameter changes through SysEx and not standard MIDI controllers.
 Working with an early MIDI spec subject to change, this SysEx
 implementation guaranteed that the device would still be MIDI compliant
 if the spec for controller messages changed, and apparantly the Roland
@@ -137,7 +137,7 @@ standard Controller messages.  Nothing has been left out.  JAMRouter
 allows the Juno-106 to be programmed to its full potential without
 hardware modification.
 
-Feel free to leave send any feedback whatsoever regarding the Juno-106 and
+Feel free to send any feedback whatsoever regarding the Juno-106 and
 JAMRouter, especially links to new tunes.  Enjoy JAMRouter, and enjoy the
 classic analog sound of the Juno-106!
 
