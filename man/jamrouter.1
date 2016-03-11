@@ -1,0 +1,329 @@
+.TH JAMROUTER 1 "Version 0.2.3: 10 Mar 2015"
+.SH NAME
+jamrouter \- JACK <--> ALSA MIDI Router
+.SH SYNOPSIS
+.B "jamrouter [\-h | \-\-help]"
+.br
+.B "jamrouter [\-v | \-\-version]"
+.br
+.B "jamrouter [\-l | \-\-list]"
+.br
+.B "jamrouter [options]"
+.br
+.SH DESCRIPTION
+.I JAMRouter
+is a near-sample-accurate low-latency low-jitter MIDI event router and
+translator, designed specifically with external hardware in mind.  JAMRouter
+serves as a timing accurate bridge between JACK MIDI software ports and MIDI
+hardware supported by ALSA Raw MIDI, ALSA Sequencer, Generic Raw MIDI, and OSS
+MIDI.
+.SH OPTIONS
+Misc. Options:
+.RS
+.TP
+.B -d \fIclass\fP or --debug=\fIclass\fP
+Set debug output to \fIclass\fP.  Can be repeated.  Valid choices for class are:
+full, init, driver, stream, timing, tx-timing, note, event, session.
+.TP
+.B -u \fIid\fP or --uuid=\fIid\fP
+Set UUID for JAMRouter instance to \fIid\fP.  This option is currently only useful
+when restoring JACK sessions, and otherwise is not required.
+.RE
+.PP
+MIDI Device / Port Options:
+.RS
+.TP
+.B -l or --list
+Scan the system and list all ALSA Sequencer and JACK MIDI ports.  Please note
+that the MIDI hardware available through the ALSA Sequencer may also be
+available as a Generic MIDI device.
+.TP
+.B -M \fIdriver\fP or --midi-driver=\fIdriver\fP
+Select \fIdriver\fP for MIDI Rx/Tx.  Choices are:  seq (ALSA Sequencer), raw (ALSA Raw MIDI),
+generic (generic /dev/midi character device access), and dummy (for testing
+only).  Note:  JACK MIDI will always serve as the other end of this
+connection.
+.TP
+.B -D \fIname\fP or --device=\fIname\fP
+Driver specific MIDI Rx/Tx port or device \fIname\fP.  ALSA Sequencer ports are
+named in the form of client:port.  ALSA Raw MIDI devices use the ALSA hardware
+naming convention of hw:X,Y.  Generic raw MIDI devices may be accessed via
+their character special device files, usually /dev/midi or /dev/midiX.
+.TP
+.B -r \fIname\fP or --rx-device=\fIname\fP
+Driver specific MIDI Rx port or device \fIname\fP.
+.TP
+.B -t \fIname\fP or --tx-device=\fIname\fP
+Driver specific MIDI Tx port or device \fIname\fP.
+.TP
+.B -x \fIN\fP or --rx-latency=\fIN\fP
+Set Rx latency to \fIN\fP buffer periods.  This defaults to 1 for buffer sizes of
+256 and above, which should be sufficient in all cases.  At buffer sizes of
+128 and below, this option takes precedence over JAMRouter's calculated
+defaults.
+.TP
+.B -X \fIN\fP or --tx-latency=\fIN\fP
+Set Tx latency to \fIN\fP buffer periods.  This defaults to 1 for buffer sizes of
+256 and above, which should be sufficient in all cases.  At buffer sizes of
+128 and below, this option takes precedence over JAMRouter's calculated
+defaults.
+.TP
+.B -g \fIN\fP or --byte-guard-time=\fIN\fP
+Add \fIN\fP microseconds of Tx guard time after transmission of each MIDI byte.
+This option may be necessary to achieve full reliability with slow MIDI
+devices or with MIDI interfaces with broken drivers.
+.sp
+The --byte-guard-time (-g) option should be used only in cases where the
+receiving device is unable to operate at full MIDI bandwidth.  This option
+imposes a minimum delay between the transmission of successive bytes by
+forcing the MIDI Tx thread to sleep for the specified number of microseconds
+after writing each byte to the device.  Byte guard times below 320
+microseconds (the time needed to transmit one MIDI byte at wire-speed) may be
+ineffective at regulating MIDI bandwidth, as this sleep time is imposed on
+JAMRouter's MIDI Tx thread, and not within the device driver.  Byte guard
+times of 640 microseconds (the point at which MIDI bandwidth is theoretically
+cut in half) and below are not known to interfere with timing accuracy.  320
+to 640 should be considered the useful range of this option.  Please note that
+this option is only able to regulate the byte-by-byte transmission speed, and
+not the bit-rate of the interface itself (which cannot be changed with most
+hardware and drivers).
+.TP
+.B -G \fIN\fP or --event-guard-time=\fIN\fP
+Add \fIN\fP microseconds of Tx guard time after transmission of each MIDI event,
+necessary on some devices while restoring SysEx dumps or performing OS updates
+via SysEx.
+.TP
+.B -i \fIclient:port\fP or --input-port=\fIclient:port\fP
+Connect JAMRouter's JACK MIDI input port to \fIclient:port\fP.  Must be a JACK MIDI
+playback port.
+.TP
+.B -o \fIclient:port\fP or --output-port=\fIclient:port\fP
+Connect JAMRouter's JACK MIDI output port to \fIclient:port\fP.  Must be a JACK MIDI
+capture port.
+.TP
+.B -y \fIprio\fP or --rx-priority=\fIprio\fP
+Set realtime thread priority for MIDI Rx thread to \fIprio.  For best realtime
+performance, JAMRouter MIDI threads should be run at a realtime priority
+higher than highest priority JACK client, and lower than the realtime priority
+of the MIDI interface's kernel IRQ thread.
+.TP
+.B -Y \fIprio\fP or --tx-priority=\fIprio\fP
+Set realtime thread priority for MIDI Tx thread to \fIprio.  For best realtime
+performance, JAMRouter MIDI threads should be run at a realtime priority
+higher than highest priority JACK client, and lower than the realtime priority
+of the MIDI interface's kernel IRQ thread.
+.RE
+.PP
+MIDI Message Translation Options:
+.RS
+.TP
+.B -A \fImode\fP or --activesensing=\fImode\fP
+Set Active-Sensing handling to mode.  Valid choices for mode are:
+.RS
+.TP
+.B \fIon\fP
+(Default)  Normal Active-Sensing handling.  Do not route Active-Sensing
+messages.  Instead, for each Active-Sensing timeout, send Note-Off events for
+all notes currently in play.
+.TP
+.B \fIthru\fP
+Route Active-Sensing messages with no special handling.  Active-Sensing
+timeouts will be ignored, and no additional Note-Off events will be
+generated.
+.TP
+.B \fIdrop\fP
+Drop all Active-Sensing messages, and do not observe Active-Sensing timeouts.
+.RE
+.TP
+.B -R or --runningstatus
+When possible, omit Running-Status byte on MIDI Tx.
+.TP
+.B -T \fIhex-val\fP or --sysexterminator=\fIhex-val\fP
+Expect SysEx messages to be terminated with \fIhex-val\fP instead of the standard
+value of 0xF7.
+.TP
+.B -U \fIhex-val\fP or --extraterminator=\fIhex-val\fP
+Use \fIhex-val\fP as 2nd byte for 2-byte SysEx terminators.  Requires -T.
+.TP
+.B -n \fIhex-val\fP --noteonvelocity=\fIhex-val\fP
+Use \fIhex-val\fP for Note-On Velocity on MIDI Tx.
+.TP
+.B -N \fIhex-val\fP --noteoffvelocity=\fIhex-val\fP
+Use \fIhex-val\fP for Note-Off Velocity on MIDI Tx.
+.TP
+.B -0 or --rxrealnoteoff
+When receiving Note-Off events in the form of Note-On with a Velocity of 0 on
+MIDI Rx, convert to actual Note-Off when routing to JACK output.
+.TP
+.B -F or --txrealnoteoff
+When receiving Note-Off events in the form of Note-On with a Velocity of 0 on
+JACK MIDI input, convert to actual Note-Off when routing to MIDI Tx.
+.TP
+.B -f or --txallnotesoff
+When multiple Note-Off messages are received on JACK MIDI input leaving no
+notes in play, save MIDI bandwidth by converting to a single All-Notes-Off
+Controller event on MIDI Tx.
+.TP
+.B -k \fIrx-chan\fP,\fItx-chan\fP,\fIcc\fP or --keymap=\fIrx-chan\fP,\fItx-chan\fP,\fIcc\fP
+Map MIDI notes to controller on alternate channel.  Note-On events for \fIrx-chan\fP
+are translated into events for Controller number \fIcc\fP on \fItx-chan.
+(Can be repeated once per Rx channel.)
+.TP
+.B -p \fIrx-chan\fP,\fItx-chan\fP,\fIcenter\fP,\fIrange\fP or --pitchmap=\fIrx-chan\fP,\fItx-chan\fP,\fIcenter\fP,\fIrange\fP
+Map MIDI notes to pitchbend on alternate channel.  Note-On events for \fIrx-chan\fP
+are translated into Pitchbend events on \fItx-chan\fP.  A note value of \fIcenter\fP
+translates into a Pitchbend amount of 0, and \fIrange\fP specifies the number of
+half-steps up or down from \fIcenter\fP needed to produce maximal and minimal
+Pitchbend values.  (Can be repeated once per Rx channel.)
+.TP
+.B -q \fIrx-chan\fP,\fItx-chan\fP,\fIcc\fP or --pitchcontrol=\fIrx-chan\fP,\fItx-chan\fP,\fIcc\fP
+Map pitchbend to controller on alternate channel.  Pitchbend events received
+channel \fIrx-chan\fP are translated into eveents for Controller number \fIcc\fP on \fItx-chan\fP.  (Can be
+repeated once per Rx channel.)
+.TP
+.B -e or --echotrans
+Echo translated pitchbend and controller messages to JACK MIDI output port for
+sequencer recording.
+.RE
+.PP
+JUNO-106 Translation Options:
+.RS
+.TP
+.B -J or --juno
+Enable Juno-106 SysEx <--> Controller translation.  (See juno-106.txt).
+.TP
+.B -s or --echosysex
+Echo translated Juno-106 SysEx messages sent on MIDI Tx back to JACK MIDI
+output port for sequencer recording.
+.RE
+.PP
+Experimental Options:
+.RS
+.TP
+.B -j or --jitter-correct
+Enable Rx jitter correction mode.  JAMRouter's Rx jitter correction mode is
+still considered experimental.  For now, it includes one type of correction
+based on observed patterns with with two MPU-401 type interfaces.  This
+correction simply normalizes the timespan of 2-7 byte events to predetermined
+values and consistently brings jitter testing scores down by 1-2 frames, and
+in some cases, provides occasional sample-accurate test runs.
+.TP
+.B -z \fIphase\fP or --phase-lock=\fIphase\fP
+Set the average \fIphase\fP within the MIDI Rx/Tx period for JACK to begin its
+buffer processing period.  The permitted range is 0.06 to 0.94.
+.sp
+The default MIDI period phase lock is 0.5, meaning that the start and end of
+each MIDI timing period is calculated so that the JACK buffer processing
+thread is expected to wake up and begin its work half way through the
+calculated MIDI period.  Increasing the phase lock will increase Rx latency
+while decreasing Tx latency by the same amount, and vice versa.  The phase
+lock affects the timing of synchronizing data between threads very directly,
+so it is important to note that at single period Rx and Tx latencies, when the
+MIDI and JACK phases are brought closer together than time in which the
+CPU-cache can reliably deliver the contents of the lock-free sync_info[] and
+MIDI event queue ringbuffers, JAMRouter will automatically increase Rx or Tx
+latency by one full period to compensate as a safeguard against
+synchronization error.  Increasing phase lock increases MIDI Rx --> JACK
+Output latency while decreasing JACK Input --> MIDI Tx latency.  Decreasing
+phase lock decreases MIDI Rx --> JACK Output latency while increasing JACK
+Input --> MIDI Tx latency.  Within reasonable limits, the phase lock allows
+trading Rx for Tx latency and vice versa for individual use cases.  The
+--phase-lock (-z) option should be treated as an expert option.  Leaving phase
+lock at the default 0.5 is in most cases to best choice, especially at buffer
+sizes of 128 and below.
+.RE
+.SH EXAMPLES
+List all ALSA Sequencer, ALSA Raw MIDI, and JACK MIDI ports/devices:
+.sp
+.RS
+jamrouter -l
+.RE
+.sp
+Route Rx of generic device /dev/midi1 to input of MusE JACK MIDI port 2:
+.sp
+.RS
+jamrouter -M generic -D /dev/midi1 -o MusE:jack-midi-2_in
+.RE
+.sp
+Make Juno-106 available to JACK on Generic Raw MIDI /dev/midi1, with stream
+and timing debug output full Juno SysEx translation.  Map all Note-On messages
+within an octave of Middle-C on channel 15 to Pitchbender on channel 1.  Map
+all Note-On messages on channel 16 to VCF Freq on channel 1:
+.sp
+.RS
+jamrouter -M generic -D /dev/midi1 -J -p 15,1,60,12 -k 16,1,19
+.RE
+.sp
+Ideal Juno-106 programming mode:  Same as above, with the addition of echoing
+translated Pitchbend and Controller 19 messages back to the JACK output port,
+and saving MIDI bandwidth by making use of Running-Status:
+.sp
+.RS
+jamrouter -M generic -D /dev/midi1 -J -p 15,1,60,12 -k 16,1,19 -e -R
+.RE
+.sp
+Ideal Access Virus b programming mode:  Make use of Running-Status to save
+bandwidth, translate keys on channel 15 to Filter 1 Cutoff on channel 1,
+translate keys on channel 16 to Filter 2 Cutoff also on channel 1, and
+additionally echo these translations back to the JACK MIDI output for
+sequencer recording:
+.sp
+.RS
+jamrouter -M generic -D /dev/midi2 -R -k 15,1,40 -k 16,1,41 -e
+.RE
+.sp
+Make OSS Raw MIDI device /dev/midi02 available on JAMRouter's JACK MIDI
+input/output:
+.sp
+.RS
+jamrouter -M generic -D /dev/midi02
+.RE
+.sp
+Run jamrouter as a JACK MIDI stream and timing debugger without connecting to
+ALSA Seq, ALSA Raw MIDI, or OSS MIDI devices:
+.sp
+.RS
+jamrouter -M dummy -d full
+.RE
+.sp
+Send real Note-Off messages instead translating to Note-On-Velocity-0 messages
+on both MIDI Tx and JACK MIDI output, and enable stream, timing, and testing
+debug output when measuring latency and jitter with jack_midi_latency_test:
+.sp
+.RS
+jamrouter -M raw -D hw:1,0 -F -0 -d stream -d timing -d testing
+.RE
+.sp
+.SH COPYRIGHT
+JAMRouter is distributed under the terms of the GNU Public License, version 3.
+.sp
+JAMRouter source code and documentation:
+.RS
+Copyright (C) 2015 William Weston <william.h.weston@gmail.com>.
+.RE
+.PP
+LASH session management:
+.RS
+Copyright (C) 2010 Anton Kormakov <assault64@gmail.com>
+.br
+Copyright (C) 2012-2015 William Weston <william.h.weston@gmail.com>
+.sp
+.RE
+This program is free software: you can redistribute it and/or modify it under
+the terms of the GNU General Public License as published by the Free Software
+Foundation, either version 3 of the License, or (at your option) any later
+version.
+.sp
+This program is distributed in the hope that it will be useful, but WITHOUT
+ANY WARRANTY; without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE.  See the GNU General Public License for more
+details.
+.sp
+You should have received a copy of the GNU General Public License along with
+this program.  If not, see <http://www.gnu.org/licenses/>.
+.SH AUTHOR
+William Weston
+.br
+Send bug reports or comments to <william.h.weston@gmail.com>
+.br
+See https://github.com/williamweston/jamrouter for the latest version.

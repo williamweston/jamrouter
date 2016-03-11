@@ -1,0 +1,7 @@
+2016-03-10 William Weston <william.h.weston@gmail.com> - 0.2.3
+	* Removed experimental portions of JACK DLL timing code.
+	* Updated README.
+	* Updated juno-106.txt.
+	* Added manual page.
+	* Added missing version-sh script.
+	* Updated RPM spec file.
